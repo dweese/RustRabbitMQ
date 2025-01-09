@@ -9,9 +9,10 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Set up tracing subscriber
-    tracing_subscriber::registry()
-        .with(fmt::layer().json()) // Use JSON formatting
-        .init();
+    tracing_subscriber::fmt()
+        .with_span_events(FmtSpan::CLOSE) // Add this to log span closing events
+        .json() // Call json() on the builder
+        .init(); 
 
     // Initialize the RabbitMQ client
     let client = RabbitMQClient::new().await?;
