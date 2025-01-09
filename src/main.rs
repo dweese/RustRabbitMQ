@@ -1,4 +1,7 @@
-use RustRabbitMQ::{message::Message, rabbitmq_client::RabbitMQClient};
+mod message;
+mod rabbitmq_client;
+
+use crate::{message::Message, rabbitmq_client::RabbitMQClient};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

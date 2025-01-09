@@ -1,26 +1,22 @@
-Alright, let's build that rabbitmq_client!
-
-Create src/rabbitmq_client.rs:
-
-In your project's src directory, create a new file named rabbitmq_client.rs.
-Add the code:
-
-Open rabbitmq_client.rs in your editor and add the following code:
-
-Rust
-
 use lapin::{
     options::*, 
     types::FieldTable, 
     Connection, 
     ConnectionProperties, 
-    Result
+    Result,
+    BasicProperties, 
+    Consumer,        
 };
-use futures_lite::stream::StreamExt;
+use futures_lite::stream::StreamExt; // Import StreamExt
 use std::env;
 
 // Import the `Message` struct from the `message` module
 use crate::message::Message;
+
+
+
+
+
 
 pub struct RabbitMQClient {
     conn: Connection, 
@@ -28,7 +24,7 @@ pub struct RabbitMQClient {
 }
 
 impl RabbitMQClient {
-    pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
+   pub async fn new() -> Result<Self, lapin::Error> { // Change this line
         // Get the RabbitMQ connection string from an environment variable
         let addr = env::var("AMQP_ADDR").unwrap_or_else(|_| "amqp://127.0.0.1:5672/%2f".into());
 
@@ -39,7 +35,7 @@ impl RabbitMQClient {
         Ok(Self { conn, channel })
     }
 
-    pub async fn publish(&self, message: Message, queue_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn publish(&self, message: Message, queue_name: &str) -> Result<(), lapin::Error> { // Change this line
         // Declare the queue (if it doesn't exist)
         self.channel
             .queue_declare(
@@ -68,7 +64,7 @@ impl RabbitMQClient {
         Ok(())
     }
 
-    pub async fn consume(&self, queue_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn consume(&self, queue_name: &str) -> Result<(), lapin::Error> { // Change this line
         // Declare the queue (if it doesn't exist)
         self.channel
             .queue_declare(
