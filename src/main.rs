@@ -2,11 +2,14 @@ mod message;
 mod rabbitmq_client;
 
 use crate::{message::Message, rabbitmq_client::RabbitMQClient};
+use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize the RabbitMQ client
     let client = RabbitMQClient::new().await?;
+    
+    info!("RabbitMQ client initialized"); // Tracing call
 
     // Create a message
     let message = Message {
