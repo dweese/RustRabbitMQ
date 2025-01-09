@@ -3,16 +3,13 @@ mod rabbitmq_client;
 
 use crate::{message::Message, rabbitmq_client::RabbitMQClient};
 use tracing::info;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::fmt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
-    // Set up tracing subscriber
-    tracing_subscriber::fmt()
-        .with_span_events(FmtSpan::CLOSE) // Add this to log span closing events
-        .json() // Call json() on the builder
-        .init(); 
+   // Set up tracing subscriber
+    fmt::init();
 
     // Initialize the RabbitMQ client
     let client = RabbitMQClient::new().await?;
