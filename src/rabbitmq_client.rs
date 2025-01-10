@@ -3,7 +3,7 @@ use std::error::Error;
 use crate::{
     database::Database,
     message::Message,
-    rabbitmq_client::RabbitMQClient, // Add this import
+    // rabbitmq_client::RabbitMQClient, // Add this import
 };
 use tracing::info;
 

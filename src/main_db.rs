@@ -2,7 +2,11 @@ mod database;
 mod message;
 mod rabbitmq_client;
 
-use crate::{database::Database, message::Message, rabbitmq_client::RabbitMQClient};
+use crate::{
+    database::Database,
+    message::Message,
+    rabbitmq_client::RabbitMQClient, // Make sure this import is present
+};
 use std::error::Error;
 use tracing::info;
 
@@ -23,7 +27,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
 
     // Run the consumer task
-    if let Err(e) = consumer_task(database).await {
+    if let Err(e) = consumer_task(database).await {rust;
         eprintln!("Consumer task error: {}", e);
     }
 
