@@ -1,10 +1,5 @@
-// use crate::{database::Database, message::Message, rabbitmq_client::RabbitMQClient};
+use crate::{database::Database, message::Message, rabbitmq_client::RabbitMQClient};
 use std::error::Error;
-use crate::{
-    database::Database,
-    message::Message,
-    // rabbitmq_client::RabbitMQClient, // Add this import
-};
 
 use crate::rabbitmq_client::RabbitMQClient; 
 
