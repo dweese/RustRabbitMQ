@@ -3,6 +3,10 @@ name = "RustRabbitMQ"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "main_db"
+path = "src/main_db.rs"
+
 [dependencies]
 lapin = "2.3" # Or the latest version
 tokio = { version = "1", features = ["full"] } 

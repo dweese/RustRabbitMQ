@@ -1,155 +1,71 @@
-use futures_lite::stream::StreamExt;
-use lapin::{
-    options::*, types::FieldTable, BasicProperties, Channel, Connection, ConnectionProperties,
-    Error, Result,
+// use crate::{database::Database, message::Message, rabbitmq_client::RabbitMQClient};
+use std::error::Error;
+use crate::{
+    database::Database,
+    message::Message,
+    rabbitmq_client::RabbitMQClient, // Add this import
 };
-use std::env;
-use tracing::{error, info};
+use tracing::info;
 
-use crate::message::Message;
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    // Initialize database and RabbitMQ client
+    let database = Database::new();
+    let rabbitmq_client = RabbitMQClient::new().await?;
 
-#[derive(Clone)] // Add Clone here
-pub struct RabbitMQClient {
-    channel: Channel,
-}
-
-impl RabbitMQClient {
-    pub async fn new() -> Result<Self> {
-        let addr = env::var("AMQP_ADDR").unwrap_or_else(|_| "amqp://127.0.0.1:5672/%2f".into());
-
-        info!("Connecting to RabbitMQ at {}", addr);
-        let conn = Connection::connect(&addr, ConnectionProperties::default())
-            .await
-            .map_err(|e| {
-                error!("Failed to connect to RabbitMQ: {}", e);
-                e
-            })?;
-
-        info!("Creating channel");
-        let channel = conn.create_channel().await.map_err(|e| {
-            error!("Failed to create channel: {}", e);
-            e
-        })?;
-
-        Ok(Self { channel })
-    }
-
-    pub async fn publish(&self, message: Message, queue_name: &str) -> Result<()> {
-        info!("Publishing message to queue {}", queue_name);
-
-        // Declare the queue
-        self.channel
-            .queue_declare(
-                queue_name,
-                QueueDeclareOptions::default(),
-                FieldTable::default(),
-            )
-            .await
-            .map_err(|e| {
-                error!("Failed to declare queue {}: {}", queue_name, e);
-                e
-            })?;
-
-        let payload = serde_json::to_string(&message).map_err(|e| {
-            error!("Failed to serialize message: {}", e);
-            Error::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                e.to_string(),
-            ))
-        })?;
-
-        self.channel
-            .basic_publish(
-                "",
-                queue_name,
-                BasicPublishOptions::default(),
-                payload.as_bytes(), // Remove .to_vec()
-                BasicProperties::default(),
-            )
-            .await
-            .map_err(|e| {
-                error!("Failed to publish message: {}", e);
-                e
-            })?
-            .await
-            .map_err(|e| {
-                error!("Failed to confirm publish: {}", e);
-                e
-            })?;
-
-        info!("Message published successfully");
-        Ok(())
-    }
-
-    pub async fn consume(&self, queue_name: &str) -> Result<()> {
-        info!("Consuming messages from queue {}", queue_name);
-
-        // Declare the queue
-        self.channel
-            .queue_declare(
-                queue_name,
-                QueueDeclareOptions::default(),
-                FieldTable::default(),
-            )
-            .await
-            .map_err(|e| {
-                error!("Failed to declare queue {}: {}", queue_name, e);
-                e
-            })?;
-
-        let mut consumer = self
-            .channel
-            .basic_consume(
-                queue_name,
-                "my_consumer",
-                BasicConsumeOptions::default(),
-                FieldTable::default(),
-            )
-            .await
-            .map_err(|e| {
-                error!("Failed to start consuming: {}", e);
-                e
-            })?;
-
-        info!("Waiting for messages");
-        while let Some(delivery) = consumer.next().await {
-            match delivery {
-                Ok(delivery) => {
-                    let message =
-                        serde_json::from_slice::<Message>(&delivery.data).map_err(|e| {
-                            error!("Failed to deserialize message: {}", e);
-                            Error::from(std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                e.to_string(),
-                            ))
-                        })?;
-                    info!("Received message: {:?}", message);
-                    delivery
-                        .ack(BasicAckOptions::default())
-                        .await
-                        .map_err(|e| {
-                            error!("Failed to acknowledge message: {}", e);
-                            e
-                        })?;
-                }
-                Err(e) => {
-                    error!("Error receiving message: {}", e);
-                }
-            }
+    // Spawn a producer task
+    let database_clone = database.clone();
+    let rabbitmq_client_clone = rabbitmq_client.clone();
+    tokio::spawn(async move {
+        if let Err(e) = producer_task(database_clone, rabbitmq_client_clone).await {
+            eprintln!("Producer task error: {}", e);
         }
+    });
 
-        Ok(())
-    }
+    // Spawn a consumer task
+    let rabbitmq_client_clone = rabbitmq_client.clone();
+    let database_clone = database.clone();
+    tokio::spawn(async move {
+        if let Err(e) = consumer_task(rabbitmq_client_clone, database_clone).await {
+            eprintln!("Consumer task error: {}", e);
+        }
+    });
+
+    Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::rabbitmq_client::RabbitMQClient;
+async fn producer_task(
+    database: Database,
+    rabbitmq_client: RabbitMQClient,
+) -> Result<(), Box<dyn Error>> {
+    // Simulate inserting data into the database
+    database.insert("key1".to_string(), "value1".to_string());
+    info!("Inserted key1 into the database");
 
-    #[tokio::test]
-    async fn test_rabbitmq_client_new() {
-        // This might require setting up a mock RabbitMQ server or using a real one
-        // For simplicity, we'll just check if it compiles and doesn't panic
-        let _client = RabbitMQClient::new().await.unwrap();
-    }
+    // Publish a message indicating the insertion
+    let message = Message {
+        content: "key1 inserted".to_string(),
+        message_type: Some("database_update".to_string()),
+    };
+    rabbitmq_client.publish(message, "database_queue").await?;
+
+    Ok(())
+}
+
+async fn consumer_task(
+    rabbitmq_client: RabbitMQClient,
+    database: Database,
+) -> Result<(), Box<dyn Error>> {
+    // Consume a message from RabbitMQ
+    info!("Consuming message from database_queue");
+    rabbitmq_client.consume("database_queue").await?;
+
+    // Simulate receiving a message and retrieving data from the database
+    info!("Waiting for message to retrieve key1");
+    // (In a real scenario, you would process the consumed message here)
+
+    let value = database.get("key1");
+    info!("Retrieved value from database: {:?}", value);
+
+    Ok(())
 }
