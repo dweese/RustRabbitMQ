@@ -2,12 +2,12 @@ mod database;
 mod message;
 mod rabbitmq_client;
 
-use crate::{
-    database::Database,
-    message::Message,
-};
+// use crate::{
+//    database::Database,
+//    message::Message,
+// };
 
-use crate::rabbitmq_client::RabbitMQClient; 
+// use crate::rabbitmq_client::RabbitMQClient; 
 
 use std::error::Error;
 use tracing::info;
