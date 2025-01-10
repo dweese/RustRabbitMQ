@@ -5,6 +5,9 @@ use crate::{
     message::Message,
     // rabbitmq_client::RabbitMQClient, // Add this import
 };
+
+use crate::rabbitmq_client::RabbitMQClient; 
+
 use tracing::info;
 
 #[tokio::main]

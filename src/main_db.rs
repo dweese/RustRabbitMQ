@@ -5,7 +5,7 @@ mod rabbitmq_client;
 use crate::{
     database::Database,
     message::Message,
-    rabbitmq_client::RabbitMQClient, // Make sure this import is present
+    rabbitmq_client::RabbitMQClient, // Make sure this import is presentgit
 };
 
 use crate::rabbitmq_client::RabbitMQClient; 
@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
 
     // Run the consumer task
-    if let Err(e) = consumer_task(database).await {rust;
+    if let Err(e) = consumer_task(database).await {;
         eprintln!("Consumer task error: {}", e);
     }
 
