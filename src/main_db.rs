@@ -7,6 +7,9 @@ use crate::{
     message::Message,
     rabbitmq_client::RabbitMQClient, // Make sure this import is present
 };
+
+use crate::rabbitmq_client::RabbitMQClient; 
+
 use std::error::Error;
 use tracing::info;
 
