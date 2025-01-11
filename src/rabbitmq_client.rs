@@ -1,14 +1,8 @@
-use lapin::{
-    options::*,
-    types::FieldTable,
-    BasicProperties,
-    Channel,
-    Connection,
-    ConnectionProperties,
-    Error,
-    Result,
-};
 use futures_lite::stream::StreamExt;
+use lapin::{
+    options::*, types::FieldTable, BasicProperties, Channel, Connection, ConnectionProperties,
+    Error, Result,
+};
 use std::env;
 use tracing::{error, info};
 
@@ -63,20 +57,20 @@ impl RabbitMQClient {
             ))
         })?;
 
-self.channel
-    .basic_publish(
-        "",
-        queue_name,
-        BasicPublishOptions::default(),
-        payload.as_bytes(), // Remove .to_vec()
-        BasicProperties::default(),
-    )
-    .await
+        self.channel
+            .basic_publish(
+                "",
+                queue_name,
+                BasicPublishOptions::default(),
+                payload.as_bytes(), // Remove .to_vec()
+                BasicProperties::default(),
+            )
+            .await
             .map_err(|e| {
                 error!("Failed to publish message: {}", e);
                 e
             })?
-    .await
+            .await
             .map_err(|e| {
                 error!("Failed to confirm publish: {}", e);
                 e
@@ -97,12 +91,13 @@ self.channel
                 FieldTable::default(),
             )
             .await
-           .map_err(|e| {
+            .map_err(|e| {
                 error!("Failed to declare queue {}: {}", queue_name, e);
                 e
             })?;
 
-        let mut consumer = self.channel
+        let mut consumer = self
+            .channel
             .basic_consume(
                 queue_name,
                 "my_consumer",
@@ -119,20 +114,22 @@ self.channel
         while let Some(delivery) = consumer.next().await {
             match delivery {
                 Ok(delivery) => {
-                    let message = serde_json::from_slice::<Message>(&delivery.data).map_err(
-                        |e| {
+                    let message =
+                        serde_json::from_slice::<Message>(&delivery.data).map_err(|e| {
                             error!("Failed to deserialize message: {}", e);
                             Error::from(std::io::Error::new(
                                 std::io::ErrorKind::Other,
                                 e.to_string(),
                             ))
-                        },
-                    )?;
+                        })?;
                     info!("Received message: {:?}", message);
-                    delivery.ack(BasicAckOptions::default()).await.map_err(|e| {
-                        error!("Failed to acknowledge message: {}", e);
-                        e
-                    })?;
+                    delivery
+                        .ack(BasicAckOptions::default())
+                        .await
+                        .map_err(|e| {
+                            error!("Failed to acknowledge message: {}", e);
+                            e
+                        })?;
                 }
                 Err(e) => {
                     error!("Error receiving message: {}", e);

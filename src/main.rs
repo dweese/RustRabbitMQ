@@ -10,18 +10,14 @@ use tracing::info;
 async fn main() -> Result<(), Box<dyn Error>> {
     // Run the RabbitMQ example
 
-    if let Err(e) =  rabbitmq_example().await
-    {
+    if let Err(e) = rabbitmq_example().await {
         eprintln!("MQ task  error: {}", e);
     }
 
-
-        // Run the database example
-    if let Err(e) =  database_example().await
-    {
+    // Run the database example
+    if let Err(e) = database_example().await {
         eprintln!("database  error: {}", e);
     }
-
 
     Ok(())
 }
@@ -32,18 +28,18 @@ async fn rabbitmq_example() -> Result<(), Box<dyn Error>> {
 
     // Create a message
     let message = Message {
-        content: "Hello, world!".to_string(),
+        content: "Hello, rabbitmq_example!".to_string(),
         message_type: Some("greeting".to_string()),
     };
 
     // Publish the message
-    if let Err(e) =    client.publish(message.clone(), "hello").await
-    {
+    if let Err(e) = client.publish(message.clone(), "hello").await {
         eprintln!("publish  error: {}", e);
     }
 
-
-
+    if let Err(e) = client.consume("database_queue").await {
+        eprintln!("publish  error: {}", e);
+    }
 
     Ok(())
 }
@@ -55,13 +51,13 @@ async fn database_example() -> Result<(), Box<dyn Error>> {
     // Spawn a producer task
     let database_clone = database.clone(); // Clone the database here
     tokio::spawn(async move {
-        if let Err(e) = producer_task(database_clone){
+        if let Err(e) = producer_task(database_clone) {
             eprintln!("Producer task error: {}", e);
         }
     });
 
     // Run the consumer task
-    if let Err(e) = consumer_task(database){
+    if let Err(e) = consumer_task(database) {
         eprintln!("Consumer task error: {}", e);
     }
 
