@@ -7,9 +7,22 @@ mod rabbitmq_client;
 use crate::{db_trivial::Database, message::Message, rabbitmq_client::RabbitMQClient};
 use std::error::Error;
 use tracing::info;
+use std::io;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::fmt::{self, format::FmtSpan};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    // Create a file appender that writes to stdout
+    let (non_blocking, _guard) = tracing_appender::non_blocking(io::stdout());
+
+    // Set up tracing subscriber
+    tracing_subscriber::fmt()
+        .with_span_events(FmtSpan::CLOSE)
+        .json()
+        .with_writer(non_blocking) // Use the non-blocking stdout appender
+        .init();
+
 
     info!("Entered main");
     info!("before rabbitmq_example");
