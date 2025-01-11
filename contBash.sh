@@ -1,1 +1,1 @@
-winpty docker exec -it optimistic_carver  bash
+docker exec -it optimistic_carver  bash

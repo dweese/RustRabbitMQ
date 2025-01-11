@@ -4,23 +4,22 @@ mod db_trivial;
 mod message;
 mod rabbitmq_client;
 
-use crate::{db_trivial::Database, message::Message, rabbitmq_client::RabbitMQClient};
+use crate::{db_trivial::Database, message::Message, rabbitmq_client::RabbitMQClient };
 use std::error::Error;
 use tracing::info;
 use std::io;
-use tracing_subscriber::prelude::*;
-use tracing_subscriber::fmt::{self, format::FmtSpan};
+// use tracing_subscriber::prelude::*;
+use tracing_subscriber::fmt;
+use tracing_subscriber::fmt::format::FmtSpan;
+// use tracing_subscriber::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // Create a file appender that writes to stdout
-    let (non_blocking, _guard) = tracing_appender::non_blocking(io::stdout());
-
-    // Set up tracing subscriber
-    tracing_subscriber::fmt()
+    // Set up tracing subscriber to write to stdout
+    fmt() // Call fmt() directly
         .with_span_events(FmtSpan::CLOSE)
         .json()
-        .with_writer(non_blocking) // Use the non-blocking stdout appender
+        .with_writer(io::stdout) // Write to standard output
         .init();
 
 
