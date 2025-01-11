@@ -8,8 +8,7 @@ use crate::{db_trivial::Database, message::Message, rabbitmq_client::RabbitMQCli
 use std::error::Error;
 use tracing::info;
 use std::io;
-use tracing_subscriber::fmt;
-use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::fmt::{self, format::FmtSpan}; // Import fmt and FmtSpan
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // Set up tracing subscriber to write to stdout
