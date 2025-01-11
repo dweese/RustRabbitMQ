@@ -8,11 +8,8 @@ use crate::{db_trivial::Database, message::Message, rabbitmq_client::RabbitMQCli
 use std::error::Error;
 use tracing::info;
 use std::io;
-// use tracing_subscriber::prelude::*;
 use tracing_subscriber::fmt;
 use tracing_subscriber::fmt::format::FmtSpan;
-// use tracing_subscriber::prelude::*;
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // Set up tracing subscriber to write to stdout
@@ -33,6 +30,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Run the database example
     database_example().await?;
+    info!("after database_example");
 
     Ok(())
 }
@@ -58,11 +56,14 @@ async fn rabbitmq_example() -> Result<(), Box<dyn Error>> {
 
 async fn database_example() -> Result<(), Box<dyn Error>> {
     // Initialize the database
+    info!("entering database_example");
     let database = Database::new();
 
+    info!("before producer task");
     // Spawn a producer task
     let database_clone = database.clone();
     tokio::spawn(async move {
+
         if let Err(e) = producer_task(database_clone).await {
             eprintln!("Producer task error: {}", e);
         }
@@ -77,6 +78,7 @@ async fn database_example() -> Result<(), Box<dyn Error>> {
 }
 
 async fn producer_task(database: Database) -> Result<(), Box<dyn Error>> {
+    info!("entered producer_task");
     // Simulate inserting data into the database
     database.insert("key1".to_string(), "value1".to_string());
     info!("Inserted key1 into the database");
