@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 // Represents a simple key-value store
+#[derive(Clone)]  // Add this line
 pub struct Database {
     data: Arc<Mutex<HashMap<String, String>>>,
 }

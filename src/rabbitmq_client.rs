@@ -76,7 +76,7 @@ self.channel
                 error!("Failed to publish message: {}", e);
                 e
             })?
-            .await
+    .await
             .map_err(|e| {
                 error!("Failed to confirm publish: {}", e);
                 e
@@ -97,7 +97,7 @@ self.channel
                 FieldTable::default(),
             )
             .await
-            .map_err(|e| {
+           .map_err(|e| {
                 error!("Failed to declare queue {}: {}", queue_name, e);
                 e
             })?;
