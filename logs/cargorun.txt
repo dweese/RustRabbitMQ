@@ -1,0 +1,14 @@
+$ cargo run
+   Compiling RustRabbitMQ v0.1.0 (C:\dev\rust\RustRabbitMQ)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.48s
+     Running `target\debug\RustRabbitMQ.exe`
+{"timestamp":"2025-01-11T04:33:00.357075Z","level":"INFO","fields":{"message":"Entered main"},"target":"RustRabbitMQ"}
+{"timestamp":"2025-01-11T04:33:00.357330Z","level":"INFO","fields":{"message":"before rabbitmq_example"},"target":"RustRabbitMQ"}
+{"timestamp":"2025-01-11T04:33:00.357417Z","level":"INFO","fields":{"message":"Connecting to RabbitMQ at amqp://127.0.0.1:5672/%2f"},"target":"RustRabbitMQ::rabbitmq_client"}
+{"timestamp":"2025-01-11T04:33:00.368152Z","level":"INFO","fields":{"message":"Creating channel"},"target":"RustRabbitMQ::rabbitmq_client"}
+{"timestamp":"2025-01-11T04:33:00.425165Z","level":"INFO","fields":{"message":"Publishing message to queue hello"},"target":"RustRabbitMQ::rabbitmq_client"}
+{"timestamp":"2025-01-11T04:33:00.426108Z","level":"INFO","fields":{"message":"Message published successfully"},"target":"RustRabbitMQ::rabbitmq_client"}
+{"timestamp":"2025-01-11T04:33:00.426141Z","level":"INFO","fields":{"message":"Consuming messages from queue hello"},"target":"RustRabbitMQ::rabbitmq_client"}
+{"timestamp":"2025-01-11T04:33:00.428165Z","level":"INFO","fields":{"message":"Waiting for messages"},"target":"RustRabbitMQ::rabbitmq_client"}
+{"timestamp":"2025-01-11T04:33:00.428303Z","level":"INFO","fields":{"message":"Received message: Message { content: \"Hello, world!\", message_type: Some(\"greeting\") }"},"target":"RustRabbitMQ::rabbitmq_client"}
+
