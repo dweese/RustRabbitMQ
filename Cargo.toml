@@ -4,15 +4,24 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "main_db"
-path = "src/main_db.rs"
+name = "RustRabbitMQ"
+path = "src/rabbitmq.rs"
 
 [dependencies]
-lapin = "2.3" # Or the latest version
-tokio = { version = "1", features = ["full"] } 
-serde = { version = "1.0", features = ["derive"] } 
+lapin = "2.5"
+tokio = { version = "1.43", features = ["full"] }
+tokio-amqp = "2.0.0"
+tokio-executor = "0.1.10"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-futures-lite = "1.12"  
-tracing = "0.1"
-tracing-subscriber = "0.3"
+futures-lite = "1.13"
+tracing = "0.1.41"
+tracing-subscriber = "0.3"  # Added back
 tracing-bunyan-formatter = "0.3"
+async-trait = "0.1.85"
+futures = "0.3.31" # Added back
+envy = "0.4"
+anyhow = "1.0.97"
+futures-util = "0.3.31"
+thiserror = "2.0.12"
+
