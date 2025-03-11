@@ -1,4 +1,4 @@
-use crate::RRMessage;
+use crate::message::RRMessage;
 use futures_lite::StreamExt;
 use lapin::{
     options::*,
@@ -8,12 +8,14 @@ use lapin::{
     Connection,
     ConnectionProperties,
 };
-
+use tokio::time::timeout;
 use tracing::{error, info}; // For structured logging
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 // Import Arc
 use tokio::sync::Mutex;  // Use Mutex for channel access
+
+use crate::env::Config;
 
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,28 +28,35 @@ pub struct Message {
 //RabbitMQ client
 pub struct RabbitMQClient {
     connection: Arc<Mutex<Connection>>,
+    config : Config
 }
 
 
 
 impl RabbitMQClient {
-    pub async fn new(amqp_addr: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new(amqp_addr: &str, config : Config) -> Result<Self, Box<dyn std::error::Error>> {
+
+        let connection_properties = ConnectionProperties::default()
+            .with_connect_timeout(config.connect_timeout())
+            .with_heartbeat(config.heartbeat());
         let conn = Connection::connect(
             amqp_addr,
-            ConnectionProperties::default(),
+            connection_properties,
         )
             .await?;
 
 
-        Ok(Self { connection: Arc::new(Mutex::new(conn)) })
+        Ok(Self { connection: Arc::new(Mutex::new(conn)), config:config })
     }
 
 
 
     pub async fn create_channel(&self) -> Result<Channel, Box<dyn std::error::Error>> {
-        let mut connection = self.connection.lock().await; // Lock connection
+        let connection = self.connection.lock().await; // Lock connection
         let channel = connection.create_channel().await?;  // Create new channel each time
-
+        channel
+            .basic_qos(self.config.rabbitmq_prefetch_count, BasicQosOptions::default())
+            .await?;
         Ok(channel)
     }
 
@@ -113,57 +122,4 @@ impl RabbitMQClient {
         }
         Ok(())
     }
-}
-
-
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-
-    if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "info");
-    }
-    tracing_subscriber::fmt::init();
-    // Set the AMQP address using an environment variable for flexibility
-    // In a real application, you'd manage sensitive data (like password) securely.
-    // Consider using configuration files or other appropriate methods.
-
-
-
-
-
-
-    std::env::set_var("AMQP_ADDR", "amqp://user:password@host:port/%2f");
-    let amqp_addr = "amqp://user_rust:HwhYg1Lw8wUh@localhost:5672/vhost_rust";
-    let rabbitmq_client = Arc::new(RabbitMQClient::new(amqp_addr).await?);
-
-    let consumer_client = rabbitmq_client.clone(); //  consumer client
-    tokio::spawn(async move {
-        if let Err(e) = consumer_client.consume("test_queue").await {
-            eprintln!("Consumer error: {}", e);
-        }
-    });
-
-
-
-    let producer_client = rabbitmq_client.clone();
-    let producer_client = rabbitmq_client.clone();
-    tokio::spawn(async move {
-        let message = RRMessage {
-            content: "Example Message".to_string(),
-            message_type: Some("test".to_string()),
-        };
-        if let Err(e) = producer_client.publish(message, "test_queue").await {
-            eprintln!("Publish error: {}", e);
-        }
-    });
-
-
-
-
-    // Keep the main thread alive (essential for the tasks to run)
-    tokio::signal::ctrl_c().await?;
-    println!("Exiting");
-    Ok(())
-
 }
