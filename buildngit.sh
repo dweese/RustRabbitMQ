@@ -1,4 +1,4 @@
-del Cargo.lock
+rm Cargo.lock
 cargo update
 cargo build
 git status

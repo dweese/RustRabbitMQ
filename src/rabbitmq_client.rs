@@ -8,7 +8,6 @@ use lapin::{
     Connection,
     ConnectionProperties,
 };
-use tokio::time::timeout;
 use tracing::{error, info}; // For structured logging
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
@@ -37,7 +36,7 @@ impl RabbitMQClient {
     pub async fn new(amqp_addr: &str, config : Config) -> Result<Self, Box<dyn std::error::Error>> {
 
         let connection_properties = ConnectionProperties::default()
-            .with_connect_timeout(config.connect_timeout())
+            .with_connect_timeout(config.connect_timeout()) // Changed line
             .with_heartbeat(config.heartbeat());
         let conn = Connection::connect(
             amqp_addr,
@@ -55,7 +54,7 @@ impl RabbitMQClient {
         let connection = self.connection.lock().await; // Lock connection
         let channel = connection.create_channel().await?;  // Create new channel each time
         channel
-            .basic_qos(self.config.rabbitmq_prefetch_count, BasicQosOptions::default())
+            .basic_qos(self.config.rabbitmq_prefetch_count, BasicQosOptions::default()) // Added
             .await?;
         Ok(channel)
     }
