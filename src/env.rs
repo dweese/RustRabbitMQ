@@ -21,10 +21,6 @@ pub struct Config {
     #[serde(default = "default_connect_timeout_seconds")]
     #[serde(rename = "RABBITMQ_CONNECT_TIMEOUT_SECONDS")]
     pub rabbitmq_connect_timeout_seconds: u64,
-
-    #[serde(default = "default_heartbeat_seconds")]
-    #[serde(rename = "RABBITMQ_HEARTBEAT_SECONDS")]
-    pub rabbitmq_heartbeat_seconds: u64,
 }
 
 fn default_prefetch_count() -> u16 {
@@ -32,10 +28,6 @@ fn default_prefetch_count() -> u16 {
 }
 
 fn default_connect_timeout_seconds() -> u64 {
-    10
-}
-
-fn default_heartbeat_seconds() -> u64 {
     10
 }
 
@@ -47,9 +39,5 @@ impl Config {
 
     pub fn connect_timeout(&self) -> Duration {
         Duration::from_secs(self.rabbitmq_connect_timeout_seconds)
-    }
-
-    pub fn heartbeat(&self) -> u16 {
-        self.rabbitmq_heartbeat_seconds as u16
     }
 }

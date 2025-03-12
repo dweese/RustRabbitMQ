@@ -2,143 +2,139 @@ rustc 1.85.0 (4d91de4e4 2025-02-17)
 cargo 1.85.0 (d73d2caf9 2024-12-31)
 Linux fedora 6.13.5-200.fc41.x86_64 #1 SMP PREEMPT_DYNAMIC Thu Feb 27 15:07:31 UTC 2025 x86_64 GNU/Linux
      Removed 0 files
-error: no such command: `cache`
-
-	View all installed commands with `cargo --list`
-	Find a package to install `cache` with `cargo search cargo-cache`
    Compiling proc-macro2 v1.0.94
    Compiling unicode-ident v1.0.18
    Compiling autocfg v1.4.0
    Compiling cfg-if v1.0.0
    Compiling libc v0.2.171
-   Compiling version_check v0.9.5
    Compiling typenum v1.18.0
+   Compiling version_check v0.9.5
    Compiling pin-project-lite v0.2.16
    Compiling memchr v2.7.4
    Compiling stable_deref_trait v1.2.0
-   Compiling crossbeam-utils v0.8.21
    Compiling subtle v2.6.1
-   Compiling futures-core v0.3.31
+   Compiling crossbeam-utils v0.8.21
    Compiling parking v2.2.1
-   Compiling once_cell v1.21.0
-   Compiling zeroize v1.8.1
+   Compiling futures-core v0.3.31
    Compiling minimal-lexical v0.2.1
+   Compiling once_cell v1.21.0
    Compiling itoa v1.0.15
+   Compiling zeroize v1.8.1
+   Compiling litemap v0.7.5
+   Compiling smallvec v1.14.0
+   Compiling base64ct v1.7.1
+   Compiling writeable v0.5.5
    Compiling shlex v1.3.0
    Compiling futures-io v0.3.31
-   Compiling writeable v0.5.5
-   Compiling smallvec v1.14.0
-   Compiling litemap v0.7.5
-   Compiling base64ct v1.7.1
-   Compiling serde v1.0.219
-   Compiling time-core v0.1.3
-   Compiling powerfmt v0.2.0
-   Compiling cc v1.2.16
-   Compiling thiserror v2.0.12
    Compiling const-oid v0.9.6
+   Compiling serde v1.0.219
    Compiling flagset v0.4.6
-   Compiling getrandom v0.3.1
+   Compiling thiserror v2.0.12
    Compiling num-conv v0.1.0
-   Compiling deranged v0.3.11
+   Compiling cc v1.2.16
+   Compiling getrandom v0.3.1
+   Compiling powerfmt v0.2.0
+   Compiling time-core v0.1.3
    Compiling icu_locid_transform_data v1.5.0
-   Compiling generic-array v0.14.7
-   Compiling cpufeatures v0.2.17
    Compiling zerocopy v0.8.23
-   Compiling time-macros v0.2.20
+   Compiling cpufeatures v0.2.17
    Compiling tracing-core v0.1.33
    Compiling pem-rfc7468 v0.7.0
-   Compiling icu_properties_data v1.5.0
+   Compiling time-macros v0.2.20
    Compiling rustls-pki-types v1.11.0
-   Compiling untrusted v0.9.0
+   Compiling generic-array v0.14.7
+   Compiling icu_properties_data v1.5.0
+   Compiling utf16_iter v1.0.5
+   Compiling deranged v0.3.11
+   Compiling utf8_iter v1.0.4
+   Compiling write16 v1.0.0
    Compiling num-traits v0.2.19
    Compiling slab v0.4.9
    Compiling lock_api v0.4.12
-   Compiling fastrand v2.3.0
-   Compiling utf16_iter v1.0.5
    Compiling icu_normalizer_data v1.5.0
-   Compiling log v0.4.26
-   Compiling nom v7.1.3
-   Compiling concurrent-queue v2.5.0
-   Compiling utf8_iter v1.0.4
-   Compiling write16 v1.0.0
    Compiling oid-registry v0.8.1
-   Compiling rustix v0.38.44
-   Compiling rustls v0.23.23
-   Compiling serde_json v1.0.140
-   Compiling event-listener v5.4.0
+   Compiling untrusted v0.9.0
+   Compiling fastrand v2.3.0
+   Compiling nom v7.1.3
+   Compiling log v0.4.26
+   Compiling concurrent-queue v2.5.0
    Compiling scopeguard v1.2.0
+   Compiling rustix v0.38.44
+   Compiling serde_json v1.0.140
+   Compiling rustls v0.23.23
+   Compiling event-listener v5.4.0
    Compiling quote v1.0.40
-   Compiling rustls-pemfile v2.2.0
    Compiling futures-lite v2.6.0
-   Compiling event-listener-strategy v0.5.3
-   Compiling syn v2.0.100
-   Compiling linux-raw-sys v0.4.15
-   Compiling lazy_static v1.5.0
+   Compiling rustls-pemfile v2.2.0
    Compiling parking_lot_core v0.9.10
-   Compiling openssl-probe v0.1.6
-   Compiling bitflags v2.9.0
-   Compiling data-encoding v2.8.0
-   Compiling ryu v1.0.20
    Compiling percent-encoding v2.3.1
+   Compiling data-encoding v2.8.0
+   Compiling syn v2.0.100
+   Compiling event-listener-strategy v0.5.3
+   Compiling ryu v1.0.20
+   Compiling lazy_static v1.5.0
+   Compiling openssl-probe v0.1.6
+   Compiling linux-raw-sys v0.4.15
+   Compiling bitflags v2.9.0
    Compiling io-lifetimes v1.0.11
-   Compiling polling v2.8.0
-   Compiling atomic-waker v1.1.2
    Compiling form_urlencoded v1.2.1
+   Compiling polling v2.8.0
    Compiling rustls-native-certs v0.7.3
-   Compiling async-task v4.7.1
    Compiling getrandom v0.2.15
+   Compiling atomic-waker v1.1.2
    Compiling cookie-factory v0.3.3
-   Compiling hex v0.4.3
+   Compiling async-task v4.7.1
    Compiling rustix v0.37.28
+   Compiling hex v0.4.3
    Compiling rand_core v0.9.3
    Compiling piper v0.2.4
-   Compiling async-channel v2.3.1
    Compiling async-lock v3.4.0
-   Compiling async-io v1.13.0
-   Compiling event-listener v2.5.3
-   Compiling linux-raw-sys v0.3.8
-   Compiling bitflags v1.3.2
-   Compiling doc-comment v0.3.3
    Compiling num-integer v0.1.46
-   Compiling fastrand v1.9.0
+   Compiling async-channel v2.3.1
+   Compiling async-io v1.13.0
+   Compiling bitflags v1.3.2
    Compiling waker-fn v1.2.0
-   Compiling async-lock v2.8.0
+   Compiling doc-comment v0.3.3
+   Compiling event-listener v2.5.3
+   Compiling fastrand v1.9.0
+   Compiling linux-raw-sys v0.3.8
    Compiling parking_lot v0.12.3
-   Compiling socket2 v0.4.10
-   Compiling spin v0.9.8
    Compiling crypto-common v0.1.6
    Compiling block-padding v0.3.3
    Compiling block-buffer v0.10.4
-   Compiling time v0.3.39
+   Compiling async-lock v2.8.0
    Compiling num-bigint v0.4.6
    Compiling inout v0.1.4
+   Compiling futures-lite v1.13.0
+   Compiling digest v0.10.7
+   Compiling socket2 v0.4.10
+   Compiling spin v0.9.8
+   Compiling cipher v0.4.4
    Compiling async-executor v1.13.1
    Compiling blocking v1.6.1
-   Compiling digest v0.10.7
-   Compiling ring v0.17.14
-   Compiling futures-lite v1.13.0
-   Compiling cipher v0.4.4
+   Compiling time v0.3.39
    Compiling amq-protocol v7.2.2
-   Compiling futures-sink v0.3.31
-   Compiling flume v0.11.1
-   Compiling anyhow v1.0.97
    Compiling hmac v0.12.1
+   Compiling ring v0.17.14
    Compiling sha2 v0.10.8
    Compiling sha1 v0.10.6
-   Compiling lapin v2.5.1
    Compiling pbkdf2 v0.12.2
    Compiling salsa20 v0.10.2
    Compiling cbc v0.1.2
    Compiling aes v0.8.4
    Compiling des v0.8.1
    Compiling rc2 v0.8.1
-   Compiling mio v1.0.3
+   Compiling futures-sink v0.3.31
+   Compiling flume v0.11.1
+   Compiling anyhow v1.0.97
+   Compiling lapin v2.5.1
    Compiling socket2 v0.5.8
    Compiling signal-hook-registry v1.4.2
+   Compiling mio v1.0.3
+   Compiling ppv-lite86 v0.2.21
    Compiling bytes v1.10.1
    Compiling iana-time-zone v0.1.61
    Compiling dotenv v0.15.0
-   Compiling ppv-lite86 v0.2.21
    Compiling scrypt v0.11.0
    Compiling rusticata-macros v4.1.0
    Compiling rand_chacha v0.9.0
@@ -148,10 +144,10 @@ error: no such command: `cache`
    Compiling zerovec-derive v0.10.3
    Compiling icu_provider_macros v1.5.0
    Compiling der_derive v0.7.3
-   Compiling serde_derive v1.0.219
    Compiling thiserror-impl v2.0.12
-   Compiling asn1-rs-impl v0.2.0
+   Compiling serde_derive v1.0.219
    Compiling tracing-attributes v0.1.28
+   Compiling asn1-rs-impl v0.2.0
    Compiling async-trait v0.1.87
    Compiling tokio-macros v2.5.0
    Compiling zerofrom-derive v0.1.6
@@ -159,13 +155,13 @@ error: no such command: `cache`
    Compiling asn1-rs-derive v0.6.0
    Compiling tokio v1.44.0
    Compiling rustls-webpki v0.102.8
+   Compiling der v0.7.9
    Compiling executor-trait v2.1.2
    Compiling reactor-trait v1.1.0
    Compiling async-reactor-trait v1.1.0
-   Compiling der v0.7.9
    Compiling tracing v0.1.41
-   Compiling zerofrom v0.1.6
    Compiling asn1-rs v0.7.0
+   Compiling zerofrom v0.1.6
    Compiling polling v3.7.4
    Compiling pinky-swear v6.2.0
    Compiling yoke v0.7.5
@@ -173,29 +169,29 @@ error: no such command: `cache`
    Compiling async-io v2.4.0
    Compiling async-global-executor v3.1.0
    Compiling spki v0.7.3
+   Compiling async-global-executor-trait v2.2.0
    Compiling x509-cert v0.2.5
    Compiling pkcs5 v0.7.1
-   Compiling async-global-executor-trait v2.2.0
    Compiling tinystr v0.7.6
    Compiling icu_collections v1.5.0
    Compiling der-parser v10.0.0
    Compiling icu_locid v1.5.0
-   Compiling icu_provider v1.5.0
    Compiling x509-parser v0.17.0
+   Compiling icu_provider v1.5.0
    Compiling icu_locid_transform v1.5.0
    Compiling cms v0.2.3
-   Compiling icu_properties v1.5.1
    Compiling pkcs12 v0.1.0
    Compiling p12-keystore v0.1.4
    Compiling rustls-connector v0.20.1
+   Compiling icu_properties v1.5.1
    Compiling tcp-stream v0.28.0
-   Compiling chrono v0.4.40
    Compiling envy v0.4.2
    Compiling uuid v1.15.1
-   Compiling amq-protocol-types v7.2.2
+   Compiling chrono v0.4.40
    Compiling icu_normalizer v1.5.0
    Compiling idna_adapter v1.2.0
    Compiling idna v1.0.3
+   Compiling amq-protocol-types v7.2.2
    Compiling url v2.5.4
    Compiling amq-protocol-uri v7.2.2
    Compiling amq-protocol-tcp v7.2.2
@@ -225,29 +221,8 @@ help: if this is a test module, consider adding a `#[cfg(test)]` to the containi
 80 | mod tests {
    | ^^^^^^^^^
 
-warning: field `rabbitmq_heartbeat_seconds` is never read
-  --> src/env.rs:27:9
-   |
-7  | pub struct Config {
-   |            ------ field in this struct
-...
-27 |     pub rabbitmq_heartbeat_seconds: u64,
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = note: `Config` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
-   = note: `#[warn(dead_code)]` on by default
-
-warning: method `heartbeat` is never used
-  --> src/env.rs:52:12
-   |
-42 | impl Config {
-   | ----------- method in this implementation
-...
-52 |     pub fn heartbeat(&self) -> u16 {
-   |            ^^^^^^^^^
-
-warning: `RustRabbitMQ` (bin "RustRabbitMQ") generated 4 warnings (run `cargo fix --bin "RustRabbitMQ"` to apply 2 suggestions)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 15.99s
+warning: `RustRabbitMQ` (bin "RustRabbitMQ") generated 2 warnings (run `cargo fix --bin "RustRabbitMQ"` to apply 2 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 16.71s
     Updating crates.io index
      Locking 0 packages to latest compatible versions
 warning: unused imports: `ConnectionProperties` and `Connection`
@@ -275,43 +250,18 @@ help: if this is a test module, consider adding a `#[cfg(test)]` to the containi
 80 | mod tests {
    | ^^^^^^^^^
 
-warning: field `rabbitmq_heartbeat_seconds` is never read
-  --> src/env.rs:27:9
-   |
-7  | pub struct Config {
-   |            ------ field in this struct
-...
-27 |     pub rabbitmq_heartbeat_seconds: u64,
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = note: `Config` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
-   = note: `#[warn(dead_code)]` on by default
-
-warning: method `heartbeat` is never used
-  --> src/env.rs:52:12
-   |
-42 | impl Config {
-   | ----------- method in this implementation
-...
-52 |     pub fn heartbeat(&self) -> u16 {
-   |            ^^^^^^^^^
-
-warning: `RustRabbitMQ` (bin "RustRabbitMQ") generated 4 warnings (run `cargo fix --bin "RustRabbitMQ"` to apply 2 suggestions)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.11s
+warning: `RustRabbitMQ` (bin "RustRabbitMQ") generated 2 warnings (run `cargo fix --bin "RustRabbitMQ"` to apply 2 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.07s
 On branch main
-Your branch is ahead of 'origin/main' by 6 commits.
-  (use "git push" to publish your local commits)
+Your branch is up to date with 'origin/main'.
 
 Changes not staged for commit:
   (use "git add <file>..." to update what will be committed)
   (use "git restore <file>..." to discard changes in working directory)
 	modified:   buildngit.log
+	modified:   cp.txt
+	modified:   scrubtarget.sh
+	modified:   src/env.rs
+	modified:   src/main.rs
 
 no changes added to commit (use "git add" and/or "git commit -a")
-[main 81a1334] Fix Cargo.toml and src/rabbitmq.rs
- 1 file changed, 79 insertions(+), 85 deletions(-)
-fatal: cannot exec '/usr/bin/ksshaskpass': No such file or directory
-fatal: cannot exec '/usr/bin/ksshaskpass': No such file or directory
-remote: Support for password authentication was removed on August 13, 2021.
-remote: Please see https://docs.github.com/get-started/getting-started-with-git/about-remote-repositories#cloning-with-https-urls for information on currently recommended modes of authentication.
-fatal: Authentication failed for 'https://github.com/dweese/RustRabbitMQ.git/'

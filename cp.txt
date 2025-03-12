@@ -1,55 +1,95 @@
-use envy::Error;
-use serde::Deserialize;
-use std::time::Duration;
-use dotenv::dotenv;
+mod rabbitmq_client;
+mod message;
+mod env;
+mod rabbitmq;
+use std::error::Error;
+use futures_lite::future;
+use uuid::Uuid;
+use crate::env::Config;
+use crate::{
+    message::{
+        RRMessage, RRMessageType, RRMessagePayload, OrderCreatedPayload, ErrorPayload,
+    },
+    rabbitmq_client::RabbitMQClient,
+};
+use tracing::info;
+use std::sync::Arc;
 
-#[derive(Deserialize, Debug)]
-pub struct Config {
-    #[serde(rename = "AMQP_ADDR")]
-    pub amqp_addr: String,
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    // Load configuration from environment variables
+    let config = Config::load()?;
+    let amqp_addr = config.amqp_addr.clone();
+    let order_created_queue = config.order_created_queue.clone();
+    let user_registered_queue = config.user_registered_queue.clone();
+    info!("amqp addr: {}", amqp_addr);
+    info!("order created queue: {}", order_created_queue);
+    info!("user registered queue: {}", user_registered_queue);
+    let rabbitmq_client = Arc::new(RabbitMQClient::new(&amqp_addr, config).await?);
 
-    #[serde(rename = "ORDER_CREATED_QUEUE")]
-    pub order_created_queue: String,
-
-    #[serde(rename = "USER_REGISTERED_QUEUE")]
-    pub user_registered_queue: String,
-
-    #[serde(default = "default_prefetch_count")]
-    #[serde(rename = "RABBITMQ_PREFETCH_COUNT")]
-    pub rabbitmq_prefetch_count: u16,
-
-    #[serde(default = "default_connect_timeout_seconds")]
-    #[serde(rename = "RABBITMQ_CONNECT_TIMEOUT_SECONDS")]
-    pub rabbitmq_connect_timeout_seconds: u64,
-
-    #[serde(default = "default_heartbeat_seconds")]
-    #[serde(rename = "RABBITMQ_HEARTBEAT_SECONDS")]
-    pub rabbitmq_heartbeat_seconds: u64,
+    let producer_client = rabbitmq_client.clone();
+    tokio::spawn(async move {
+        if let Err(e) = producer_task(producer_client, &order_created_queue).await {
+            eprintln!("Producer task error: {}", e);
+        }
+    });
+    let consumer_client = rabbitmq_client.clone();
+    tokio::spawn(async move {
+        if let Err(e) = consumer_task(consumer_client, &user_registered_queue).await {
+            eprintln!("Consumer task error: {}", e);
+        }
+    });
+    future::pending::<()>().await;
+    Ok(())
 }
 
-fn default_prefetch_count() -> u16 {
-    10
+async fn producer_task(
+    rabbitmq_client: Arc<RabbitMQClient>,
+    queue_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    let message = RRMessage::new(
+        RRMessageType::OrderCreated,
+        RRMessagePayload::OrderCreated(OrderCreatedPayload {
+            order_id: Uuid::new_v4(),
+            amount: 10.0,
+        }),
+    );
+    rabbitmq_client.publish(message, queue_name).await?;
+    info!("Producer published message");
+
+    //Simulate an error
+    let order_id = Uuid::new_v4();
+    let error_payload = ErrorPayload::CardDeclined {
+        order_id,
+        reason: "Insufficient funds".to_string(),
+    };
+    rabbitmq_client.send_error(error_payload, queue_name).await?;
+    info!("Producer published error message");
+    Ok(())
 }
 
-fn default_connect_timeout_seconds() -> u64 {
-    10
+async fn consumer_task(
+    rabbitmq_client: Arc<RabbitMQClient>,
+    queue_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    rabbitmq_client.consume(queue_name).await?;
+    info!("Consumer started");
+    Ok(())
 }
 
-fn default_heartbeat_seconds() -> u64 {
-    10
-}
-
-impl Config {
-    pub fn load() -> Result<Self, Error> {
-        dotenv().ok(); // Load .env if it exists, ignore errors
-        envy::from_env::<Config>()
-    }
-
-    pub fn connect_timeout(&self) -> Duration {
-        Duration::from_secs(self.rabbitmq_connect_timeout_seconds)
-    }
-
-    pub fn heartbeat(&self) -> u16 {
-        self.rabbitmq_heartbeat_seconds as u16
+mod tests {
+    use lapin::{Connection, ConnectionProperties};
+    use crate::env::Config;
+    // remove those unused imports
+    // use lapin::{Connection, ConnectionProperties};
+    // use crate::env::Config;
+    #[test]
+    fn test_connection_construction() -> Result<(), Box<dyn std::error::Error>> {
+        let config = Config::load()?;
+        let amqp_addr = config.amqp_addr.clone();
+        let connection_properties = ConnectionProperties::default();
+        let connection_result = Connection::connect(&amqp_addr, connection_properties);
+        assert!(connection_result.is_ok());
+        Ok(())
     }
 }

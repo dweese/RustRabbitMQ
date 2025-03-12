@@ -2,7 +2,7 @@ mod rabbitmq_client;
 mod message;
 mod env;
 mod rabbitmq;
-use std::error::Error; // ADDED THIS LINE
+use std::error::Error;
 use futures_lite::future;
 use uuid::Uuid;
 use crate::env::Config;
@@ -80,6 +80,9 @@ async fn consumer_task(
 mod tests {
     use lapin::{Connection, ConnectionProperties};
     use crate::env::Config;
+    // remove those unused imports
+    // use lapin::{Connection, ConnectionProperties};
+    // use crate::env::Config;
     #[test]
     fn test_connection_construction() -> Result<(), Box<dyn std::error::Error>> {
         let config = Config::load()?;
