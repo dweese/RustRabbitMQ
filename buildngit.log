@@ -308,3 +308,10 @@ Changes not staged for commit:
 	modified:   buildngit.log
 
 no changes added to commit (use "git add" and/or "git commit -a")
+[main 81a1334] Fix Cargo.toml and src/rabbitmq.rs
+ 1 file changed, 79 insertions(+), 85 deletions(-)
+fatal: cannot exec '/usr/bin/ksshaskpass': No such file or directory
+fatal: cannot exec '/usr/bin/ksshaskpass': No such file or directory
+remote: Support for password authentication was removed on August 13, 2021.
+remote: Please see https://docs.github.com/get-started/getting-started-with-git/about-remote-repositories#cloning-with-https-urls for information on currently recommended modes of authentication.
+fatal: Authentication failed for 'https://github.com/dweese/RustRabbitMQ.git/'
