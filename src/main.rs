@@ -2,18 +2,18 @@ mod rabbitmq_client;
 mod message;
 mod env;
 mod rabbitmq;
+use std::error::Error; // ADDED THIS LINE
+use futures_lite::future;
 use uuid::Uuid;
-use crate::env::Config;  // If env.rs is directly in the src directory
-
-use crate::{message::RRMessage,
-            message::RRMessageType,
-            message::RRMessagePayload,
-            message::OrderCreatedPayload,
-            message::ErrorPayload,
-            rabbitmq_client::RabbitMQClient};
-use std::error::Error;
+use crate::env::Config;
+use crate::{
+    message::{
+        RRMessage, RRMessageType, RRMessagePayload, OrderCreatedPayload, ErrorPayload,
+    },
+    rabbitmq_client::RabbitMQClient,
+};
 use tracing::info;
-use std::sync::Arc; // Import Arc
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -39,18 +39,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
             eprintln!("Consumer task error: {}", e);
         }
     });
-    futures::future::pending::<()>().await;
+    future::pending::<()>().await;
     Ok(())
 }
-async fn producer_task(rabbitmq_client: Arc<RabbitMQClient>, queue_name : &str) -> Result<(), Box<dyn Error>> { // Corrected signature
+
+async fn producer_task(
+    rabbitmq_client: Arc<RabbitMQClient>,
+    queue_name: &str,
+) -> Result<(), Box<dyn Error>> {
     let message = RRMessage::new(
         RRMessageType::OrderCreated,
         RRMessagePayload::OrderCreated(OrderCreatedPayload {
             order_id: Uuid::new_v4(),
-            amount: 10.0
-        })
+            amount: 10.0,
+        }),
     );
-    rabbitmq_client.publish(message, queue_name).await?; // Access methods through the Arc
+    rabbitmq_client.publish(message, queue_name).await?;
     info!("Producer published message");
 
     //Simulate an error
@@ -63,29 +67,26 @@ async fn producer_task(rabbitmq_client: Arc<RabbitMQClient>, queue_name : &str) 
     info!("Producer published error message");
     Ok(())
 }
-async fn consumer_task(rabbitmq_client: Arc<RabbitMQClient>, queue_name: &str) -> Result<(), Box<dyn Error>> {  // Corrected signature
+
+async fn consumer_task(
+    rabbitmq_client: Arc<RabbitMQClient>,
+    queue_name: &str,
+) -> Result<(), Box<dyn Error>> {
     rabbitmq_client.consume(queue_name).await?;
     info!("Consumer started");
-    // ... (Logic to consume messages using rabbitmq_client.consume) ...   // Access methods through the Arc
     Ok(())
 }
 
-// tests be;pw
 mod tests {
     use lapin::{Connection, ConnectionProperties};
     use crate::env::Config;
-    use std::error::Error;
-    // use super::*; // imports from the current file
     #[test]
-    fn test_connection_construction() -> Result<(), Box<dyn Error>> {
+    fn test_connection_construction() -> Result<(), Box<dyn std::error::Error>> {
         let config = Config::load()?;
         let amqp_addr = config.amqp_addr.clone();
-        // Mock or stub the actual connection for isolated unit testing
         let connection_properties = ConnectionProperties::default();
         let connection_result = Connection::connect(&amqp_addr, connection_properties);
-
-        // Assert that the connection object is constructed as expected.
-        assert!(connection_result.is_ok()); // Simple verification.
+        assert!(connection_result.is_ok());
         Ok(())
     }
 }

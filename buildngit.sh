@@ -1,4 +1,5 @@
-rm Cargo.lock
+#!/bin/bash
+./scrubtarget.sh
 cargo update
 cargo build
 git status
