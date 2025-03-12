@@ -26,6 +26,7 @@ pub struct Config {
     #[serde(rename = "RABBITMQ_HEARTBEAT_SECONDS")]
     pub rabbitmq_heartbeat_seconds: u64,
 }
+
 fn default_prefetch_count() -> u16 {
     10
 }
@@ -48,7 +49,7 @@ impl Config {
         Duration::from_secs(self.rabbitmq_connect_timeout_seconds)
     }
 
-    pub fn heartbeat(&self) -> Duration {
-        Duration::from_secs(self.rabbitmq_heartbeat_seconds)
+    pub fn heartbeat(&self) -> u16 {
+        self.rabbitmq_heartbeat_seconds as u16
     }
 }

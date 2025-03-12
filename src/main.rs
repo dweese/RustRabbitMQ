@@ -2,11 +2,19 @@ mod rabbitmq_client;
 mod message;
 mod env;
 mod rabbitmq;
+use uuid::Uuid;
 use crate::env::Config;  // If env.rs is directly in the src directory
-use crate::{message::RRMessage, rabbitmq_client::RabbitMQClient};
+
+use crate::{message::RRMessage,
+            message::RRMessageType,
+            message::RRMessagePayload,
+            message::OrderCreatedPayload,
+            message::ErrorPayload,
+            rabbitmq_client::RabbitMQClient};
 use std::error::Error;
 use tracing::info;
 use std::sync::Arc; // Import Arc
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // Load configuration from environment variables
@@ -35,12 +43,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 async fn producer_task(rabbitmq_client: Arc<RabbitMQClient>, queue_name : &str) -> Result<(), Box<dyn Error>> { // Corrected signature
-    let message = RRMessage {
-        content: "Message from producer".to_string(),
-        message_type: Some("producer_message".to_string()),
-    };
+    let message = RRMessage::new(
+        RRMessageType::OrderCreated,
+        RRMessagePayload::OrderCreated(OrderCreatedPayload {
+            order_id: Uuid::new_v4(),
+            amount: 10.0
+        })
+    );
     rabbitmq_client.publish(message, queue_name).await?; // Access methods through the Arc
     info!("Producer published message");
+
+    //Simulate an error
+    let order_id = Uuid::new_v4();
+    let error_payload = ErrorPayload::CardDeclined {
+        order_id,
+        reason: "Insufficient funds".to_string(),
+    };
+    rabbitmq_client.send_error(error_payload, queue_name).await?;
+    info!("Producer published error message");
     Ok(())
 }
 async fn consumer_task(rabbitmq_client: Arc<RabbitMQClient>, queue_name: &str) -> Result<(), Box<dyn Error>> {  // Corrected signature
@@ -49,9 +69,12 @@ async fn consumer_task(rabbitmq_client: Arc<RabbitMQClient>, queue_name: &str) -
     // ... (Logic to consume messages using rabbitmq_client.consume) ...   // Access methods through the Arc
     Ok(())
 }
+
 // tests be;pw
 mod tests {
     use lapin::{Connection, ConnectionProperties};
+    use crate::env::Config;
+    use std::error::Error;
     // use super::*; // imports from the current file
     #[test]
     fn test_connection_construction() -> Result<(), Box<dyn Error>> {
