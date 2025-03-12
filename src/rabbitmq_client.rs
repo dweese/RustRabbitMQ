@@ -1,4 +1,4 @@
-use crate::message::{RRMessage, RRMessagePayload, ErrorPayload, RRMessageType}; // Added all the correct types.
+use crate::message::{RRMessage, RRMessagePayload, ErrorPayload, RRMessageType};
 use futures_lite::StreamExt;
 use crate::env::Config;
 use lapin::{
@@ -9,22 +9,21 @@ use lapin::{
     Connection,
     ConnectionProperties,
 };
-use tracing::{error, info}; // For structured logging
+use tracing::{error, info};
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;  // Use Mutex for channel access
-use tokio::time::{timeout};
-//RabbitMQ client
+use tokio::sync::Mutex;
+use tokio::time::timeout;
+
 pub struct RabbitMQClient {
     connection: Arc<Mutex<Connection>>,
     config: Config,
 }
+
 impl RabbitMQClient {
     pub async fn new(amqp_addr: &str, config: Config) -> Result<Self, Box<dyn std::error::Error>> {
-        let connection_properties = ConnectionProperties::default(); // removed with_heartbeat
-        // Wrap the connection attempt in a timeout
+        let connection_properties = ConnectionProperties::default();
         let connection_result = timeout(
-            config.connect_timeout(), // Use the configured timeout duration
+            config.connect_timeout(),
             Connection::connect(amqp_addr, connection_properties),
         )
             .await;
@@ -38,36 +37,39 @@ impl RabbitMQClient {
             config,
         })
     }
+
     pub async fn create_channel(&self) -> Result<Channel, Box<dyn std::error::Error>> {
-        let connection = self.connection.lock().await; // Lock connection
-        let channel = connection.create_channel().await?; // Create new channel each time
+        let connection = self.connection.lock().await;
+        let channel = connection.create_channel().await?;
         channel
-            .basic_qos(self.config.rabbitmq_prefetch_count, BasicQosOptions::default()) // Added
+            .basic_qos(self.config.rabbitmq_prefetch_count, BasicQosOptions::default())
             .await?;
         Ok(channel)
     }
+
     pub async fn publish(
         &self,
-        message: RRMessage, // Correct RRMessage type
+        message: RRMessage,
         queue: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let channel = self.create_channel().await?;
-        let message_bytes = serde_json::to_vec(&message)?; // Use serde_json
+        let message_bytes = serde_json::to_vec(&message)?;
         let confirm = channel
             .basic_publish(
                 "",
                 queue,
                 BasicPublishOptions::default(),
-                message_bytes.as_ref(), // Use as_ref() to avoid cloning
+                message_bytes.as_ref(),
                 BasicProperties::default(),
             )
             .await?;
         confirm
             .await
-            .map_err(|e| format!("Failed to confirm publish: {}", e))?; //unwrap to check for errors
-        info!("Published message: {:?}", message); // Log successful publish
+            .map_err(|e| format!("Failed to confirm publish: {}", e))?;
+        info!("Published message: {:?}", message);
         Ok(())
     }
+
     pub async fn send_error(
         &self,
         error_payload: ErrorPayload,
@@ -77,6 +79,7 @@ impl RabbitMQClient {
         self.publish(message, queue).await?;
         Ok(())
     }
+
     pub async fn consume(&self, queue: &str) -> Result<(), Box<dyn std::error::Error>> {
         let channel = self.create_channel().await?;
         let mut consumer = channel
@@ -90,7 +93,7 @@ impl RabbitMQClient {
         while let Some(delivery) = consumer.next().await {
             match delivery {
                 Ok(delivery) => {
-                    let message_result = serde_json::from_slice::<RRMessage>(&delivery.data); // change the type here
+                    let message_result = serde_json::from_slice::<RRMessage>(&delivery.data);
                     match message_result {
                         Ok(message) => {
                             info!("Consumed message: {:?}", message);
@@ -104,7 +107,7 @@ impl RabbitMQClient {
                                 RRMessagePayload::Error(error_payload) => {
                                     error!("Consumed Error Message: {:?}", error_payload);
                                     match error_payload {
-                                        ErrorPayload::CardDeclined {order_id, reason} => {
+                                        ErrorPayload::CardDeclined { order_id, reason } => {
                                             error!("CardDeclined: OrderId: {} Reason: {}", order_id, reason);
                                         }
                                         ErrorPayload::InsufficientStock { product_id, quantity_requested, quantity_available } => {
@@ -119,10 +122,7 @@ impl RabbitMQClient {
                                     }
                                 }
                             }
-                            delivery
-                                .ack(BasicAckOptions::default())
-                                .await
-                                .expect("ack");
+                            delivery.ack(BasicAckOptions::default()).await.expect("ack");
                         }
                         Err(e) => {
                             error!("Failed to deserialize message: {}", e);

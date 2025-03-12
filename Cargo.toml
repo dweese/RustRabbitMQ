@@ -8,9 +8,9 @@ name = "RustRabbitMQ"
 path = "src/main.rs"
 
 [dependencies]
-lapin = "2.2.1" # Corrected
-tokio = { version = "1.36.0", features = ["full"] } # Corrected
-serde = { version = "1.0.219", features = ["derive"] } # Corrected
+lapin = "2.2.1"
+tokio = { version = "1.36.0", features = ["full"] }
+serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 futures-lite = "2.6.0"
 tracing = "0.1.41"
@@ -18,5 +18,5 @@ envy = "0.4.2"
 anyhow = "1.0.97"
 dotenv = "0.15.0"
 thiserror = "2.0.12"
-chrono = { version = "0.4.40", features = ["serde"] } # Correct: Added serde feature
-uuid = { version = "1.15.1", features = ["v4", "serde"] } # Correct: Added serde feature
+chrono = { version = "0.4.40", features = ["serde"] }
+uuid = { version = "1.15.1", features = ["v4", "serde"] }
