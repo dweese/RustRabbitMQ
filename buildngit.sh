@@ -1,5 +1,3 @@
-# shellcheck disable=SC1128
-#!/bin/bash
 ./scrubtarget.sh
 cargo update
 cargo build
