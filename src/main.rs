@@ -80,7 +80,7 @@ async fn consumer_task(
 mod tests {
     // remove those unused imports
     // use lapin::{Connection, ConnectionProperties};
-    use crate::env::Config;
+    // use crate::env::Config;
     #[test]
     fn test_connection_construction() -> Result<(), Box<dyn std::error::Error>> {
         let config = Config::load()?;
