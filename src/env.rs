@@ -39,3 +39,62 @@ impl Config {
         Duration::from_secs(self.rabbitmq_connect_timeout_seconds)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use dotenv::dotenv;
+
+    //Load the .env file at the beginning of the tests
+    #[ctor::ctor]
+    fn init() {
+        dotenv().ok();
+    }
+
+    #[test]
+    fn test_config_load() {
+
+        let config_result = Config::load();
+        assert!(config_result.is_ok());
+
+        let config = config_result.unwrap();
+        assert_eq!(config.amqp_addr, "amqp://user_rust:HwhYg1Lw8wUh@localhost:5672/vhost_rust");
+        assert_eq!(config.order_created_queue, "order_created");
+        assert_eq!(config.user_registered_queue, "user_registered");
+        assert_eq!(config.rabbitmq_prefetch_count, 20);
+        assert_eq!(config.rabbitmq_connect_timeout_seconds, 15);
+
+    }
+
+    #[test]
+    fn test_config_defaults() {
+        // Ensure environment variables are not set
+        //Remove all variables for the test
+        env::remove_var("AMQP_ADDR");
+        env::remove_var("ORDER_CREATED_QUEUE");
+        env::remove_var("USER_REGISTERED_QUEUE");
+        env::remove_var("RABBITMQ_PREFETCH_COUNT");
+        env::remove_var("RABBITMQ_CONNECT_TIMEOUT_SECONDS");
+
+        let config_result = Config::load();
+        assert!(config_result.is_ok());
+
+        let config = config_result.unwrap();
+        assert_eq!(config.rabbitmq_prefetch_count, 10);
+        assert_eq!(config.rabbitmq_connect_timeout_seconds, 10);
+    }
+
+    #[test]
+    fn test_config_connect_timeout() {
+        let config = Config {
+            amqp_addr: String::from("amqp://test:test@localhost:5672/%2f"),
+            order_created_queue: String::from("test_order_created"),
+            user_registered_queue: String::from("test_user_registered"),
+            rabbitmq_prefetch_count: 15,
+            rabbitmq_connect_timeout_seconds: 20,
+        };
+
+        assert_eq!(config.connect_timeout(), Duration::from_secs(20));
+    }
+}
