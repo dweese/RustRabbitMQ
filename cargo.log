@@ -1,3 +1,17 @@
+warning: unused import: `crate::env::Config`
+  --> src/main.rs:83:9
+   |
+83 |     use crate::env::Config;
+   |         ^^^^^^^^^^^^^^^^^^
+   |
+help: if this is a test module, consider adding a `#[cfg(test)]` to the containing module
+  --> src/main.rs:80:1
+   |
+80 | mod tests {
+   | ^^^^^^^^^
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: `RustRabbitMQ` (bin "RustRabbitMQ") generated 1 warning (run `cargo fix --bin "RustRabbitMQ"` to apply 1 suggestion)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.07s
      Running `target/debug/RustRabbitMQ`
 Error: MissingValue("AMQP_ADDR")
