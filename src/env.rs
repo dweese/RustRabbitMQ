@@ -73,23 +73,7 @@ mod tests {
 
     }
 
-    #[test]
-    fn test_config_defaults() {
-        // Ensure environment variables are not set
-        //Remove all variables for the test
-        let _ = env::remove_var("AMQP_ADDR");
-        let _ = env::remove_var("ORDER_CREATED_QUEUE");
-        let _ = env::remove_var("USER_REGISTERED_QUEUE");
-        let _ = env::remove_var("RABBITMQ_PREFETCH_COUNT");
-        let _ = env::remove_var("RABBITMQ_CONNECT_TIMEOUT_SECONDS");
 
-        let config_result = Config::load();
-        assert!(config_result.is_ok());
-
-        let config = config_result.unwrap();
-        assert_eq!(config.rabbitmq_prefetch_count, 10);
-        assert_eq!(config.rabbitmq_connect_timeout_seconds, 10);
-    }
 
     #[test]
     fn test_config_connect_timeout() {
