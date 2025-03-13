@@ -78,17 +78,15 @@ async fn consumer_task(
 }
 
 mod tests {
-    use lapin::{Connection, ConnectionProperties};
-    use crate::env::Config;
     // remove those unused imports
     // use lapin::{Connection, ConnectionProperties};
-    // use crate::env::Config;
+    use crate::env::Config;
     #[test]
     fn test_connection_construction() -> Result<(), Box<dyn std::error::Error>> {
         let config = Config::load()?;
         let amqp_addr = config.amqp_addr.clone();
-        let connection_properties = ConnectionProperties::default();
-        let connection_result = Connection::connect(&amqp_addr, connection_properties);
+        let connection_properties = Default::default();
+        let connection_result = lapin::Connection::connect(&amqp_addr, connection_properties);
         assert!(connection_result.is_ok());
         Ok(())
     }

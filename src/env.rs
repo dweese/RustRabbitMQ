@@ -1,7 +1,6 @@
 use envy::Error;
 use serde::Deserialize;
 use std::time::Duration;
-use dotenv::dotenv;
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
@@ -33,7 +32,6 @@ fn default_connect_timeout_seconds() -> u64 {
 
 impl Config {
     pub fn load() -> Result<Self, Error> {
-        dotenv().ok(); // Load .env if it exists, ignore errors
         envy::from_env::<Config>()
     }
 
