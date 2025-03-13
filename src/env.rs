@@ -1,6 +1,7 @@
-use envy::Error;
 use serde::Deserialize;
 use std::time::Duration;
+use std::env;
+use dotenv::dotenv;
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
@@ -31,8 +32,21 @@ fn default_connect_timeout_seconds() -> u64 {
 }
 
 impl Config {
-    pub fn load() -> Result<Self, Error> {
-        envy::from_env::<Config>()
+    pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
+        dotenv().ok();
+        Ok(Config {
+            amqp_addr: env::var("AMQP_ADDR")?,
+            order_created_queue: env::var("ORDER_CREATED_QUEUE")?,
+            user_registered_queue: env::var("USER_REGISTERED_QUEUE")?,
+            rabbitmq_prefetch_count: match env::var("RABBITMQ_PREFETCH_COUNT") {
+                Ok(val) => val.parse()?,
+                Err(_) => default_prefetch_count(),
+            },
+            rabbitmq_connect_timeout_seconds: match env::var("RABBITMQ_CONNECT_TIMEOUT_SECONDS") {
+                Ok(val) => val.parse()?,
+                Err(_) => default_connect_timeout_seconds(),
+            },
+        })
     }
 
     pub fn connect_timeout(&self) -> Duration {
@@ -44,17 +58,9 @@ impl Config {
 mod tests {
     use super::*;
     use std::env;
-    use dotenv::dotenv;
-
-    //Load the .env file at the beginning of the tests
-    #[ctor::ctor]
-    fn init() {
-        dotenv().ok();
-    }
 
     #[test]
     fn test_config_load() {
-
         let config_result = Config::load();
         assert!(config_result.is_ok());
 
