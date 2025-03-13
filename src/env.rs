@@ -77,11 +77,11 @@ mod tests {
     fn test_config_defaults() {
         // Ensure environment variables are not set
         //Remove all variables for the test
-        env::remove_var("AMQP_ADDR");
-        env::remove_var("ORDER_CREATED_QUEUE");
-        env::remove_var("USER_REGISTERED_QUEUE");
-        env::remove_var("RABBITMQ_PREFETCH_COUNT");
-        env::remove_var("RABBITMQ_CONNECT_TIMEOUT_SECONDS");
+        let _ = env::remove_var("AMQP_ADDR");
+        let _ = env::remove_var("ORDER_CREATED_QUEUE");
+        let _ = env::remove_var("USER_REGISTERED_QUEUE");
+        let _ = env::remove_var("RABBITMQ_PREFETCH_COUNT");
+        let _ = env::remove_var("RABBITMQ_CONNECT_TIMEOUT_SECONDS");
 
         let config_result = Config::load();
         assert!(config_result.is_ok());
