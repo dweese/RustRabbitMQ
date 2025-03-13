@@ -265,3 +265,6 @@ Changes not staged for commit:
 	modified:   src/main.rs
 
 no changes added to commit (use "git add" and/or "git commit -a")
+[main 04b1766] Fix Cargo.toml and src/rabbitmq.rs
+ 5 files changed, 167 insertions(+), 187 deletions(-)
+fatal: cannot exec '/usr/bin/ksshaskpass': No such file or directory
