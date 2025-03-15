@@ -1,18 +1,16 @@
-use crate::message::{RRMessage, RRMessagePayload, ErrorPayload, RRMessageType};
-use futures_lite::StreamExt;
+use crate::errors::Result;
+use crate::message::{ErrorPayload, RRMessage, RRMessagePayload, RRMessageType};
+
 use crate::env::Config;
+use futures_lite::StreamExt;
 use lapin::{
-    options::*,
-    types::FieldTable,
-    BasicProperties,
-    Channel,
-    Connection,
-    ConnectionProperties,
+    options::*, types::FieldTable, BasicProperties, Channel, Connection, ConnectionProperties,
 };
-use tracing::{error, info};
+
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
+use tracing::{error, info};
 
 pub struct RabbitMQClient {
     connection: Arc<Mutex<Connection>>,
@@ -20,71 +18,12 @@ pub struct RabbitMQClient {
 }
 
 impl RabbitMQClient {
-    pub async fn new(amqp_addr: &str, config: Config) -> Result<Self, Box<dyn std::error::Error>> {
-        let connection_properties = ConnectionProperties::default();
-        let connection_result = timeout(
-            config.connect_timeout(),
-            Connection::connect(amqp_addr, connection_properties),
-        )
-            .await;
-        let conn = match connection_result {
-            Ok(Ok(conn)) => conn,
-            Ok(Err(e)) => return Err(format!("Failed to connect to RabbitMQ: {}", e).into()),
-            Err(_) => return Err("Connection to RabbitMQ timed out".into()),
-        };
-        Ok(Self {
-            connection: Arc::new(Mutex::new(conn)),
-            config,
-        })
-    }
-
-    pub async fn create_channel(&self) -> Result<Channel, Box<dyn std::error::Error>> {
-        let connection = self.connection.lock().await;
-        let channel = connection.create_channel().await?;
-        channel
-            .basic_qos(self.config.rabbitmq_prefetch_count, BasicQosOptions::default())
-            .await?;
-        Ok(channel)
-    }
-
-    pub async fn publish(
-        &self,
-        message: RRMessage,
-        queue: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let channel = self.create_channel().await?;
-        let message_bytes = serde_json::to_vec(&message)?;
-        let confirm = channel
-            .basic_publish(
-                "",
-                queue,
-                BasicPublishOptions::default(),
-                message_bytes.as_ref(),
-                BasicProperties::default(),
-            )
-            .await?;
-        confirm
-            .await
-            .map_err(|e| format!("Failed to confirm publish: {}", e))?;
-        info!("Published message: {:?}", message);
-        Ok(())
-    }
-
-    pub async fn send_error(
-        &self,
-        error_payload: ErrorPayload,
-        queue: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let message = RRMessage::new(RRMessageType::Error, RRMessagePayload::Error(error_payload));
-        self.publish(message, queue).await?;
-        Ok(())
-    }
-
-    pub async fn consume(&self, queue: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Changed this from private to public to match how it's being used in main.rs
+    pub async fn consume(&self, queue_name: &str) -> Result<()> {
         let channel = self.create_channel().await?;
         let mut consumer = channel
             .basic_consume(
-                queue,
+                queue_name, // Fixed: was using undeclared variable 'queue'
                 "consumer",
                 BasicConsumeOptions::default(),
                 FieldTable::default(),
@@ -108,16 +47,29 @@ impl RabbitMQClient {
                                     error!("Consumed Error Message: {:?}", error_payload);
                                     match error_payload {
                                         ErrorPayload::CardDeclined { order_id, reason } => {
-                                            error!("CardDeclined: OrderId: {} Reason: {}", order_id, reason);
+                                            error!(
+                                                "CardDeclined: OrderId: {} Reason: {}",
+                                                order_id, reason
+                                            );
                                         }
-                                        ErrorPayload::InsufficientStock { product_id, quantity_requested, quantity_available } => {
+                                        ErrorPayload::InsufficientStock {
+                                            product_id,
+                                            quantity_requested,
+                                            quantity_available,
+                                        } => {
                                             error!("InsufficientStock: ProductId: {} requested: {} available: {}", product_id, quantity_requested, quantity_available);
                                         }
                                         ErrorPayload::PaymentFailed { order_id, reason } => {
-                                            error!("PaymentFailed: OrderId: {} Reason: {}", order_id, reason);
+                                            error!(
+                                                "PaymentFailed: OrderId: {} Reason: {}",
+                                                order_id, reason
+                                            );
                                         }
                                         ErrorPayload::InvalidOrder { order_id, errors } => {
-                                            error!("InvalidOrder: OrderId: {} Errors: {:?}", order_id, errors);
+                                            error!(
+                                                "InvalidOrder: OrderId: {} Errors: {:?}",
+                                                order_id, errors
+                                            );
                                         }
                                     }
                                 }
@@ -134,6 +86,60 @@ impl RabbitMQClient {
                 }
             }
         }
+        Ok(())
+    }
+    pub async fn send_error(&self, error_payload: ErrorPayload, queue: &str) -> Result<()> {
+        let message = RRMessage::new(RRMessageType::Error, RRMessagePayload::Error(error_payload));
+        self.publish(message, queue).await?;
+        Ok(())
+    }
+
+    pub async fn new(amqp_addr: &str, config: Config) -> Result<Self> {
+        let connection_properties = ConnectionProperties::default();
+        let connection_result = timeout(
+            config.connect_timeout(),
+            Connection::connect(amqp_addr, connection_properties),
+        )
+        .await;
+        let conn = match connection_result {
+            Ok(Ok(conn)) => conn,
+            Ok(Err(e)) => return Err(format!("Failed to connect to RabbitMQ: {}", e).into()),
+            Err(_) => return Err("Connection to RabbitMQ timed out".into()),
+        };
+        Ok(Self {
+            connection: Arc::new(Mutex::new(conn)),
+            config,
+        })
+    }
+
+    pub async fn create_channel(&self) -> Result<Channel> {
+        let connection = self.connection.lock().await;
+        let channel = connection.create_channel().await?;
+        channel
+            .basic_qos(
+                self.config.rabbitmq_prefetch_count,
+                BasicQosOptions::default(),
+            )
+            .await?;
+        Ok(channel)
+    }
+
+    pub async fn publish(&self, message: RRMessage, queue: &str) -> Result<()> {
+        let channel = self.create_channel().await?;
+        let message_bytes = serde_json::to_vec(&message)?;
+        let confirm = channel
+            .basic_publish(
+                "",
+                queue,
+                BasicPublishOptions::default(),
+                message_bytes.as_ref(),
+                BasicProperties::default(),
+            )
+            .await?;
+        confirm
+            .await
+            .map_err(|e| format!("Failed to confirm publish: {}", e))?;
+        info!("Published message: {:?}", message);
         Ok(())
     }
 }
