@@ -7,7 +7,7 @@ pub struct RRMessage {
     pub id: Uuid,
     pub timestamp: DateTime<Utc>,
     pub message_type: RRMessageType,
-    pub payload: RRMessagePayload
+    pub payload: RRMessagePayload,
 }
 impl RRMessage {
     pub fn new(message_type: RRMessageType, payload: RRMessagePayload) -> Self {
@@ -15,7 +15,7 @@ impl RRMessage {
             id: Uuid::new_v4(),
             timestamp: Utc::now(),
             message_type,
-            payload
+            payload,
         }
     }
 }
@@ -23,7 +23,7 @@ impl RRMessage {
 pub enum RRMessageType {
     OrderCreated,
     UserRegistered,
-    Error
+    Error,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum RRMessagePayload {
@@ -42,8 +42,21 @@ pub struct UserRegisteredPayload {
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum ErrorPayload {
-    CardDeclined { order_id: Uuid, reason: String },
-    InsufficientStock { product_id: String, quantity_requested: u32, quantity_available: u32 },
-    PaymentFailed { order_id: Uuid, reason: String },
-    InvalidOrder { order_id: Uuid, errors: Vec<String> },
+    CardDeclined {
+        order_id: Uuid,
+        reason: String,
+    },
+    InsufficientStock {
+        product_id: String,
+        quantity_requested: u32,
+        quantity_available: u32,
+    },
+    PaymentFailed {
+        order_id: Uuid,
+        reason: String,
+    },
+    InvalidOrder {
+        order_id: Uuid,
+        errors: Vec<String>,
+    },
 }

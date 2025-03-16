@@ -26,7 +26,7 @@ async fn is_rabbitmq_healthy(amqp_addr: &str) -> bool {
         Ok(connection) => {
             info!("RabbitMQ is healthy.");
             if let Err(e) = connection.close(0, "Health check successful").await {
-                eprintln!("Error closing connection: {}", e);
+                eprintln!("Error closing common: {}", e);
             }
             true
         }
@@ -38,15 +38,26 @@ async fn is_rabbitmq_healthy(amqp_addr: &str) -> bool {
 }
 
 async fn producer_task(rabbitmq_client: Arc<RabbitMQClient>, queue_name: &str) -> Result<()> {
+    let order_id = Uuid::new_v4();
+    let amount = 10.0;
+
     let message = RRMessage::new(
         RRMessageType::OrderCreated,
-        RRMessagePayload::OrderCreated(OrderCreatedPayload {
-            order_id: Uuid::new_v4(),
-            amount: 10.0,
-        }),
+        RRMessagePayload::OrderCreated(OrderCreatedPayload { order_id, amount }),
     );
+
+    info!(
+        "➡️ PRODUCING: Order created message with order_id: {}, amount: ${:.2}",
+        order_id, amount
+    );
+
     rabbitmq_client.publish(message, queue_name).await?;
-    info!("Producer published message");
+    info!(
+        "✅ PRODUCED: Order created message successfully sent to queue: '{}'",
+        queue_name
+    );
+    // Small delay for better readability in logs
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     //Simulate an error
     let order_id = Uuid::new_v4();
@@ -61,15 +72,10 @@ async fn producer_task(rabbitmq_client: Arc<RabbitMQClient>, queue_name: &str) -
     Ok(())
 }
 
-async fn consumer_task(
-    rabbitmq_client: Arc<RabbitMQClient>,
-    queue_name: &str,
-) -> Result<()> {
-
+async fn consumer_task(rabbitmq_client: Arc<RabbitMQClient>, queue_name: &str) -> Result<()> {
     rabbitmq_client.consume(queue_name).await?;
     info!("Consumer started");
     Ok(())
-
 }
 
 #[tokio::main]
@@ -95,14 +101,16 @@ async fn main() -> Result<()> {
     let rabbitmq_client = Arc::new(RabbitMQClient::new(&amqp_addr, config).await?);
 
     let producer_client = rabbitmq_client.clone();
+    let order_created_queue_producer = order_created_queue.clone(); // Clone for the producer
     let producer_handle: JoinHandle<Result<()>> =
-        tokio::spawn(async move { producer_task(producer_client, &order_created_queue).await });
-
+        tokio::spawn(
+            async move { producer_task(producer_client, &order_created_queue_producer).await },
+        );
 
     let consumer_client = rabbitmq_client.clone();
+    // Use the original order_created_queue here
     let consumer_handle: JoinHandle<Result<()>> =
-        tokio::spawn(async move { consumer_task(consumer_client, &user_registered_queue).await });
-
+        tokio::spawn(async move { consumer_task(consumer_client, &order_created_queue).await });
 
     let (producer_result, consumer_result) = tokio::join!(producer_handle, consumer_handle);
 

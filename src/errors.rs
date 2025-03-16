@@ -7,7 +7,7 @@ use tokio::time::error::Elapsed;
 
 #[derive(Debug, Error)]
 pub enum RabbitError {
-    #[error("RabbitMQ connection error: {0}")]
+    #[error("RabbitMQ common error: {0}")]
     ConnectionError(String),
 
     #[error("RabbitMQ channel error: {0}")]
@@ -41,7 +41,7 @@ impl From<LapinError> for RabbitError {
         // Use string representation for classification
         let error_text = error.to_string();
 
-        if error_text.contains("connection") {
+        if error_text.contains("common") {
             RabbitError::ConnectionError(error_text)
         } else if error_text.contains("channel") {
             RabbitError::ChannelError(error_text)
