@@ -3,7 +3,8 @@ mod errors;
 mod message;
 mod models;
 mod rabbitmq_client;
-
+mod zero_copy_deser;
+pub mod common;
 use crate::errors::Result;
 
 use lapin::{Connection, ConnectionProperties};

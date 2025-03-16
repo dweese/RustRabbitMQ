@@ -30,14 +30,12 @@ impl ConnectionManager {
     }
 
     pub async fn get_connection(&mut self) -> Result<&Connection, LapinError> {
-        if let Some(conn) = &self.connection {
-            if conn.status().connected() {
-                return Ok(conn);
-            }
+        if self.connection.as_ref().map_or(false, |conn| conn.status().connected()) {
+            return Ok(self.connection.as_ref().unwrap());
         }
-
         self.establish_connection().await
     }
+
 
     async fn establish_connection(&mut self) -> Result<&Connection, LapinError> {
         self.reconnect_attempts = 0;

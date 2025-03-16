@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{error, info, warn};
 
-mod common;
-use common::connection::ConnectionManager;
+use super::connection::ConnectionManager;  // Access the ConnectionManager from connection.rs module
+
 
 #[derive(Error, Debug)]
 pub enum ConsumerError {
@@ -56,7 +56,7 @@ impl MessageConsumer {
 
     async fn setup_channel(&mut self) -> Result<&Channel, ConsumerError> {
         if let Some(channel) = &self.channel {
-            if channel.status().is_connected() {
+            if channel.status().connected() {
                 return Ok(channel);
             }
         }
@@ -195,7 +195,7 @@ impl MessageConsumer {
                     error!("Error receiving message: {}", e);
 
                     // Check if we need to reconnect or just continue
-                    if !channel.status().is_connected() {
+                    if !channel.status().connected() {
                         warn!("Channel disconnected, attempting to reconnect");
                         // The next iteration will try to reconnect
                         break;

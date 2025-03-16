@@ -1,22 +1,23 @@
-use futures::stream::StreamExt;       // from futures
+// At the top of advanced_patterns.rs
+use super::ConnectionManager;
+use futures::stream::StreamExt; // from futures
 
+use futures::TryStreamExt;
 use lapin::{
     message::Delivery, options::*, types::FieldTable, BasicProperties, Channel, Connection,
     ConnectionProperties, Error as LapinError, ExchangeKind,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use futures::TryStreamExt;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use super::type_safe_mr;
 
-mod common;
-use common::connection::ConnectionManager;
-
-
+// Instead of:
+// use crate::common::connection::ConnectionManager;
 
 #[derive(Error, Debug)]
 pub enum RabbitError {

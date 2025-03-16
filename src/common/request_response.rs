@@ -1,23 +1,21 @@
+use futures::stream::StreamExt;
 use lapin::{
-    options::*, types::FieldTable, BasicProperties, Channel, Connection,
-    ExchangeKind, Error as LapinError, message::Delivery,
-};
-use futures::stream::StreamExt;       // from futures
+    message::Delivery, options::*, types::FieldTable, BasicProperties, Channel, Connection,
+    Error as LapinError, ExchangeKind,
+}; // from futures
 
-use serde::{Serialize, Deserialize};
-use thiserror::Error;
-use tracing::{info, error};
-use uuid::Uuid;
-use tokio::sync::oneshot;
+use futures::TryStreamExt;
+use log::warn;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use futures::TryStreamExt;
-use log::warn;
+use thiserror::Error;
+use tokio::sync::oneshot;
+use tracing::{error, info};
+use uuid::Uuid;
 
-mod common;
-use common::connection::ConnectionManager;
-
+use super::connection::ConnectionManager; // Access the ConnectionManager from connection.rs module
 
 #[derive(Error, Debug)]
 pub enum RpcError {
@@ -61,8 +59,7 @@ struct RpcClient {
 
 impl RpcClient {
     pub async fn new(uri: &str, timeout_secs: u64) -> Result<Self, RpcError> {
-        let connection_manager = ConnectionManager::new(uri)
-            .with_reconnect_policy(5, 1000);
+        let connection_manager = ConnectionManager::new(uri).with_reconnect_policy(5, 1000);
 
         let response_queue = format!("rpc.response.{}", Uuid::new_v4());
 
@@ -79,13 +76,15 @@ impl RpcClient {
 
     async fn setup(&mut self) -> Result<&Channel, RpcError> {
         if let Some(channel) = &self.channel {
-            if channel.status().is_connected() {
+            if channel.status().connected() {
                 return Ok(channel);
             }
         }
 
         let connection = self.connection_manager.get_connection().await?;
-        let channel = connection.create_channel().await
+        let channel = connection
+            .create_channel()
+            .await
             .map_err(|e| RpcError::ChannelError(e.to_string()))?;
 
         // Declare response queue (exclusive, auto-delete)
@@ -100,7 +99,9 @@ impl RpcClient {
                 FieldTable::default(),
             )
             .await
-            .map_err(|e| RpcError::ChannelError(format!("Failed to declare response queue: {}", e)))?;
+            .map_err(|e| {
+                RpcError::ChannelError(format!("Failed to declare response queue: {}", e))
+            })?;
 
         // Setup consumer for response queue
         let consumer = channel
@@ -136,10 +137,14 @@ impl RpcClient {
                                 // Send the response back
                                 let _ = callback.send(Ok(delivery.data));
                             } else {
-                                error!("Received response with unknown correlation ID: {}", correlation_id);
+                                error!(
+                                    "Received response with unknown correlation ID: {}",
+                                    correlation_id
+                                );
 
                                 // Reject the message
-                                if let Err(e) = delivery.reject(BasicRejectOptions::default()).await {
+                                if let Err(e) = delivery.reject(BasicRejectOptions::default()).await
+                                {
                                     error!("Failed to reject message: {}", e);
                                 }
                             }
@@ -151,7 +156,7 @@ impl RpcClient {
                                 error!("Failed to reject message: {}", e);
                             }
                         }
-                    },
+                    }
                     Err(e) => {
                         error!("Error receiving response: {}", e);
                     }
@@ -163,7 +168,12 @@ impl RpcClient {
         Ok(self.channel.as_ref().unwrap())
     }
 
-    pub async fn call<T: Serialize, R: for<'de> Deserialize<'de>>(&mut self, exchange: &str, routing_key: &str, request: &T) -> Result<R, RpcError> {
+    pub async fn call<T: Serialize, R: for<'de> Deserialize<'de>>(
+        &mut self,
+        exchange: &str,
+        routing_key: &str,
+        request: &T,
+    ) -> Result<R, RpcError> {
         let channel = self.setup().await?;
 
         // Generate correlation ID
@@ -211,7 +221,9 @@ impl RpcClient {
 
     pub async fn close(&mut self) -> Result<(), RpcError> {
         if let Some(channel) = &self.channel {
-            channel.close(0, "Closing RPC client").await
+            channel
+                .close(0, "Closing RPC client")
+                .await
                 .map_err(|e| RpcError::ChannelError(e.to_string()))?;
         }
 
@@ -229,8 +241,7 @@ struct RpcServer {
 
 impl RpcServer {
     pub async fn new(uri: &str, queue: &str) -> Result<Self, RpcError> {
-        let connection_manager = ConnectionManager::new(uri)
-            .with_reconnect_policy(5, 1000);
+        let connection_manager = ConnectionManager::new(uri).with_reconnect_policy(5, 1000);
 
         Ok(RpcServer {
             connection_manager,
@@ -247,7 +258,9 @@ impl RpcServer {
         }
 
         let connection = self.connection_manager.get_connection().await?;
-        let channel = connection.create_channel().await
+        let channel = connection
+            .create_channel()
+            .await
             .map_err(|e| RpcError::ChannelError(e.to_string()))?;
 
         // Declare queue
@@ -306,12 +319,13 @@ impl RpcServer {
                     tokio::spawn(async move {
                         Self::process_request(channel, delivery, handler.clone()).await;
                     });
-                },
+                }
                 Err(e) => {
                     error!("Error receiving request: {}", e);
 
-                    // Check if we need to reconnect
-                    if !channel.status().is_connected() {
+                    // Check if we need t
+                    // o reconnect
+                    if !channel.status().connected() {
                         warn!("Channel disconnected, attempting to reconnect");
                         break;
                     }
@@ -322,11 +336,7 @@ impl RpcServer {
         Ok(())
     }
 
-    async fn process_request<F, Fut>(
-        channel: Channel,
-        delivery: Delivery,
-        handler: F,
-    )
+    async fn process_request<F, Fut>(channel: Channel, delivery: Delivery, handler: F)
     where
         F: Fn(InventoryRequest) -> Fut + Send + Sync,
         Fut: std::future::Future<Output = Result<InventoryResponse, RpcError>> + Send,
@@ -360,45 +370,54 @@ impl RpcServer {
             }
         };
 
-        info!("Received inventory request for product: {}", request.product_id);
+        info!(
+            "Received inventory request for product: {}",
+            request.product_id
+        );
 
         // Process the request
         let response_result = handler(request).await;
 
         // Send response
         match response_result {
-            Ok(response) => {
-                match serde_json::to_vec(&response) {
-                    Ok(payload) => {
-                        let properties = BasicProperties::default()
-                            .with_correlation_id(correlation_id.into())
-                            .with_content_type("application/json".into());
+            Ok(response) => match serde_json::to_vec(&response) {
+                Ok(payload) => {
+                    let properties = BasicProperties::default()
+                        .with_correlation_id(correlation_id.into())
+                        .with_content_type("application/json".into());
 
-                        match channel.basic_publish(
+                    match channel
+                        .basic_publish(
                             "",
                             reply_to,
                             BasicPublishOptions::default(),
                             &payload,
                             properties,
-                        ).await {
-                            Ok(_) => {
-                                info!("Sent inventory response for product: {}", response.product_id);
-                                let _ = delivery.ack(BasicAckOptions::default()).await;
-                            },
+                        )
+                        .await
+                    {
+                        Ok(_) => {
+                            info!(
+                                "Sent inventory response for product: {}",
+                                response.product_id
+                            );
+                            let _ = delivery.ack(BasicAckOptions::default()).await;
+                        }
 
-                            Err(e) => {
-                                error!("Failed to send response: {}", e);
-                                let _ = delivery.reject(BasicRejectOptions {
+                        Err(e) => {
+                            error!("Failed to send response: {}", e);
+                            let _ = delivery
+                                .reject(BasicRejectOptions {
                                     requeue: true,
                                     ..BasicRejectOptions::default()
-                                }).await;
-                            }
+                                })
+                                .await;
                         }
-                    },
-                    Err(e) => {
-                        error!("Failed to serialize response: {}", e);
-                        let _ = delivery.reject(BasicRejectOptions::default()).await;
                     }
+                }
+                Err(e) => {
+                    error!("Failed to serialize response: {}", e);
+                    let _ = delivery.reject(BasicRejectOptions::default()).await;
                 }
             },
             Err(e) => {
@@ -410,7 +429,9 @@ impl RpcServer {
 
     pub async fn close(&mut self) -> Result<(), RpcError> {
         if let Some(channel) = &self.channel {
-            channel.close(0, "Closing RPC server").await
+            channel
+                .close(0, "Closing RPC server")
+                .await
                 .map_err(|e| RpcError::ChannelError(e.to_string()))?;
         }
 
@@ -441,26 +462,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let server_uri = rabbitmq_uri.clone();
     let inventory_clone = inventory.clone();
     tokio::spawn(async move {
-        let mut server = RpcServer::new(&server_uri, "inventory_requests").await.unwrap();
+        let mut server = RpcServer::new(&server_uri, "inventory_requests")
+            .await
+            .unwrap();
 
-        server.start(move |request: InventoryRequest| {
-            let inventory = inventory_clone.clone();
-            async move {
-                // Simulate processing delay
-                tokio::time::sleep(Duration::from_millis(100)).await;
+        server
+            .start(move |request: InventoryRequest| {
+                let inventory = inventory_clone.clone();
+                async move {
+                    // Simulate processing delay
+                    tokio::time::sleep(Duration::from_millis(100)).await;
 
-                let quantity = {
-                    let inv = inventory.lock().unwrap();
-                    *inv.get(&request.product_id).unwrap_or(&0)
-                };
+                    let quantity = {
+                        let inv = inventory.lock().unwrap();
+                        *inv.get(&request.product_id).unwrap_or(&0)
+                    };
 
-                Ok(InventoryResponse {
-                    product_id: request.product_id,
-                    quantity,
-                    available: quantity > 0,
-                })
-            }
-        }).await.unwrap();
+                    Ok(InventoryResponse {
+                        product_id: request.product_id,
+                        quantity,
+                        available: quantity > 0,
+                    })
+                }
+            })
+            .await
+            .unwrap();
     });
 
     // Wait for the server to start
@@ -475,11 +501,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             product_id: product_id.to_string(),
         };
 
-        match client.call::<_, InventoryResponse>("", "inventory_requests", &request).await {
+        match client
+            .call::<_, InventoryResponse>("", "inventory_requests", &request)
+            .await
+        {
             Ok(response) => {
-                println!("Product {} availability: {}", response.product_id, if response.available { "In stock" } else { "Out of stock" });
+                println!(
+                    "Product {} availability: {}",
+                    response.product_id,
+                    if response.available {
+                        "In stock"
+                    } else {
+                        "Out of stock"
+                    }
+                );
                 println!("Quantity: {}", response.quantity);
-            },
+            }
             Err(e) => {
                 println!("Failed to get inventory for {}: {}", product_id, e);
             }

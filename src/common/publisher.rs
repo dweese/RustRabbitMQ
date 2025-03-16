@@ -1,16 +1,15 @@
 use lapin::{
-    options::*, types::FieldTable, BasicProperties, Channel, Connection,
-    ExchangeKind, Error as LapinError,
+    options::*, types::FieldTable, BasicProperties, Channel, Connection, Error as LapinError,
+    ExchangeKind,
 };
-use serde::{Serialize, Deserialize};
-use thiserror::Error;
-use tracing::{info, error};
-use uuid::Uuid;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use thiserror::Error;
+use tracing::{error, info};
+use uuid::Uuid;
 
-mod common;
-use common::connection::ConnectionManager;
-
+// With this (depending on what you need):
+use super::connection::ConnectionManager; // Access the ConnectionManager from connection.rs module
 
 #[derive(Error, Debug)]
 pub enum PublishError {
@@ -44,8 +43,7 @@ struct Publisher {
 
 impl Publisher {
     pub async fn new(uri: &str, exchange: &str) -> Result<Self, PublishError> {
-        let connection_manager = ConnectionManager::new(uri)
-            .with_reconnect_policy(5, 1000);
+        let connection_manager = ConnectionManager::new(uri).with_reconnect_policy(5, 1000);
 
         Ok(Publisher {
             connection_manager,
@@ -56,13 +54,15 @@ impl Publisher {
 
     async fn get_channel(&mut self) -> Result<&Channel, PublishError> {
         if let Some(channel) = &self.channel {
-            if channel.status().is_connected() {
+            if channel.status().connected() {
                 return Ok(channel);
             }
         }
 
         let connection = self.connection_manager.get_connection().await?;
-        let channel = connection.create_channel().await
+        let channel = connection
+            .create_channel()
+            .await
             .map_err(|e| PublishError::ChannelError(e.to_string()))?;
 
         // Declare the exchange
@@ -77,13 +77,19 @@ impl Publisher {
                 FieldTable::default(),
             )
             .await
-            .map_err(|e| PublishError::ChannelError(format!("Failed to declare exchange: {}", e)))?;
+            .map_err(|e| {
+                PublishError::ChannelError(format!("Failed to declare exchange: {}", e))
+            })?;
 
         self.channel = Some(channel);
         Ok(self.channel.as_ref().unwrap())
     }
 
-    pub async fn publish<T: Serialize>(&mut self, routing_key: &str, message: &T) -> Result<(), PublishError> {
+    pub async fn publish<T: Serialize>(
+        &mut self,
+        routing_key: &str,
+        message: &T,
+    ) -> Result<(), PublishError> {
         let payload = serde_json::to_vec(message)?;
         let channel = self.get_channel().await?;
 
@@ -103,15 +109,19 @@ impl Publisher {
             .await
             .map_err(|e| PublishError::PublishError(e.to_string()))?;
 
-        info!("Published message to exchange '{}' with routing key '{}'",
-              self.exchange, routing_key);
+        info!(
+            "Published message to exchange '{}' with routing key '{}'",
+            self.exchange, routing_key
+        );
 
         Ok(())
     }
 
     pub async fn close(&mut self) -> Result<(), PublishError> {
         if let Some(channel) = &self.channel {
-            channel.close(0, "Closing publisher").await
+            channel
+                .close(0, "Closing publisher")
+                .await
                 .map_err(|e| PublishError::ChannelError(e.to_string()))?;
         }
 
