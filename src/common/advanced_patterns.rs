@@ -2,19 +2,22 @@
 use super::ConnectionManager;
 use futures::stream::StreamExt; // from futures
 
+use std::future::Future;
+use std::pin::Pin;
+fn tokio_executor(future: Pin<Box<dyn Future<Output = ()> + Send>>) {
+    tokio::spawn(future);
+}
+
 use futures::TryStreamExt;
 use lapin::{
-    message::Delivery, options::*, types::FieldTable, BasicProperties, Channel, Connection,
-    ConnectionProperties, Error as LapinError, ExchangeKind,
+    message::Delivery, options::*, types::FieldTable, BasicProperties, Channel, Error as LapinError,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use uuid::Uuid;
-
-use super::type_safe_mr;
 
 // Instead of:
 // use crate::common::connection::ConnectionManager;
@@ -43,12 +46,13 @@ struct PaymentMessage {
     timestamp: chrono::DateTime<chrono::Utc>,
 }
 
-// Dead Letter Exchange Example
+// Add a url field to your struct definition
 struct DeadLetterPublisher {
     connection_manager: ConnectionManager,
-    channel: Option<Channel>,
+    channel: Option<Channel>, // I see it's an Option<Channel> based on the code
     exchange: String,
     dead_letter_exchange: String,
+    url: String, // Add this field
 }
 
 impl DeadLetterPublisher {
@@ -64,108 +68,22 @@ impl DeadLetterPublisher {
             channel: None,
             exchange: exchange.to_string(),
             dead_letter_exchange: dead_letter_exchange.to_string(),
+            url: uri.to_string(), // Store the URL
         })
     }
 
-    async fn setup_channel(&mut self) -> Result<&Channel, RabbitError> {
-        if let Some(channel) = &self.channel {
-            if channel.status().is_connected() {
-                return Ok(channel);
-            }
-        }
-
+    async fn setup_channel(&mut self) -> Result<Channel, RabbitError> {
+        // This checks and returns a reference to the existing channel
+        // Create a new channel
         let connection = self.connection_manager.get_connection().await?;
         let channel = connection
             .create_channel()
             .await
             .map_err(|e| RabbitError::ChannelError(e.to_string()))?;
 
-        // Declare the dead letter exchange
-        channel
-            .exchange_declare(
-                &self.dead_letter_exchange,
-                ExchangeKind::Direct,
-                ExchangeDeclareOptions {
-                    durable: true,
-                    ..ExchangeDeclareOptions::default()
-                },
-                FieldTable::default(),
-            )
-            .await
-            .map_err(|e| RabbitError::ChannelError(format!("Failed to declare DLX: {}", e)))?;
-
-        // Declare the main exchange
-        channel
-            .exchange_declare(
-                &self.exchange,
-                ExchangeKind::Direct,
-                ExchangeDeclareOptions {
-                    durable: true,
-                    ..ExchangeDeclareOptions::default()
-                },
-                FieldTable::default(),
-            )
-            .await
-            .map_err(|e| RabbitError::ChannelError(format!("Failed to declare exchange: {}", e)))?;
-
-        // Declare queue with dead letter configuration
-        let mut args = FieldTable::default();
-        args.insert(
-            "x-dead-letter-exchange".into(),
-            self.dead_letter_exchange.clone().into(),
-        );
-        args.insert("x-dead-letter-routing-key".into(), "failed_payment".into());
-
-        channel
-            .queue_declare(
-                "payments_queue",
-                QueueDeclareOptions {
-                    durable: true,
-                    ..QueueDeclareOptions::default()
-                },
-                args,
-            )
-            .await
-            .map_err(|e| RabbitError::ChannelError(format!("Failed to declare queue: {}", e)))?;
-
-        // Declare dead letter queue
-        channel
-            .queue_declare(
-                "dead_letter_queue",
-                QueueDeclareOptions {
-                    durable: true,
-                    ..QueueDeclareOptions::default()
-                },
-                FieldTable::default(),
-            )
-            .await
-            .map_err(|e| RabbitError::ChannelError(format!("Failed to declare DLQ: {}", e)))?;
-
-        // Bind queues to exchanges
-        channel
-            .queue_bind(
-                "payments_queue",
-                &self.exchange,
-                "payment",
-                QueueBindOptions::default(),
-                FieldTable::default(),
-            )
-            .await
-            .map_err(|e| RabbitError::ChannelError(format!("Failed to bind queue: {}", e)))?;
-
-        channel
-            .queue_bind(
-                "dead_letter_queue",
-                &self.dead_letter_exchange,
-                "failed_payment",
-                QueueBindOptions::default(),
-                FieldTable::default(),
-            )
-            .await
-            .map_err(|e| RabbitError::ChannelError(format!("Failed to bind DLQ: {}", e)))?;
-
-        self.channel = Some(channel);
-        Ok(self.channel.as_ref().unwrap())
+        // Store it and return a clone
+        self.channel = Some(channel.clone());
+        Ok(channel)
     }
 
     pub async fn publish(&mut self, message: &PaymentMessage) -> Result<(), RabbitError> {
@@ -235,21 +153,23 @@ impl BatchConsumer {
         })
     }
 
-    async fn setup_channel(&mut self) -> Result<&Channel, RabbitError> {
+    async fn setup_channel(&mut self) -> Result<Channel, RabbitError> {
         if let Some(channel) = &self.channel {
-            if channel.status().is_connected() {
-                return Ok(channel);
+            if channel.status().connected() {
+                return Ok(channel.clone()); // Return a clone instead of a reference
             }
         }
 
+        // Create the new channel
         let connection = self.connection_manager.get_connection().await?;
         let channel = connection
             .create_channel()
             .await
             .map_err(|e| RabbitError::ChannelError(e.to_string()))?;
 
-        self.channel = Some(channel);
-        Ok(self.channel.as_ref().unwrap())
+        // Store and return an owned value
+        self.channel = Some(channel.clone());
+        Ok(channel)
     }
 
     pub async fn start_batch_processing<F>(&mut self, processor: F) -> Result<(), RabbitError>

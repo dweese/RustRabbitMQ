@@ -1,9 +1,8 @@
 use lapin::{
-    options::*, types::FieldTable, BasicProperties, Channel, Connection, Error as LapinError,
+    options::*, types::FieldTable, BasicProperties, Channel, Error as LapinError,
     ExchangeKind,
 };
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 use thiserror::Error;
 use tracing::{error, info};
 use uuid::Uuid;

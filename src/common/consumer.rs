@@ -1,15 +1,12 @@
 use futures::TryStreamExt;
 use futures_lite::StreamExt; // Add this import
 
-use lapin::{
-    options::*, types::FieldTable, Channel, Connection, Consumer, Error as LapinError, ExchangeKind,
-};
+use lapin::{options::*, types::FieldTable, Channel, Error as LapinError, ExchangeKind};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{error, info, warn};
 
-use super::connection::ConnectionManager;  // Access the ConnectionManager from connection.rs module
-
+use super::connection::ConnectionManager; // Access the ConnectionManager from connection.rs module
 
 #[derive(Error, Debug)]
 pub enum ConsumerError {
@@ -83,7 +80,6 @@ impl MessageConsumer {
                 ConsumerError::ChannelError(format!("Failed to declare exchange: {}", e))
             })?;
 
-
         info!("About to declare queue: {}", self.queue);
 
         // Declare the queue
@@ -100,7 +96,10 @@ impl MessageConsumer {
             .await
             .map_err(|e| ConsumerError::ChannelError(format!("Failed to declare queue: {}", e)))?;
 
-        info!("Queue '{}' declared successfully: {:?}", self.queue, queue_declare_result);
+        info!(
+            "Queue '{}' declared successfully: {:?}",
+            self.queue, queue_declare_result
+        );
 
         // Bind the queue to the exchange
         channel
@@ -116,7 +115,6 @@ impl MessageConsumer {
 
         self.channel = Some(channel);
 
-
         Ok(self.channel.as_ref().unwrap())
     }
 
@@ -128,11 +126,12 @@ impl MessageConsumer {
         let consumer = channel
             .basic_consume(
                 &self.queue,
-                &format!("consumer-{}", uuid::Uuid::new_v4()),  // Use only this as the consumer tag
+                &format!("consumer-{}", uuid::Uuid::new_v4()), // Use only this as the consumer tag
                 BasicConsumeOptions::default(),
                 FieldTable::default(),
             )
-            .await.map_err(|e| ConsumerError::ConsumerError(e.to_string()))?;
+            .await
+            .map_err(|e| ConsumerError::ConsumerError(e.to_string()))?;
 
         info!("Started consuming from queue: {}", self.queue);
 

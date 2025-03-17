@@ -1,7 +1,7 @@
 use futures::stream::StreamExt;
 use lapin::{
-    message::Delivery, options::*, types::FieldTable, BasicProperties, Channel, Connection,
-    Error as LapinError, ExchangeKind,
+    message::Delivery, options::*, types::FieldTable, BasicProperties, Channel,
+    Error as LapinError,
 }; // from futures
 
 use futures::TryStreamExt;
@@ -9,7 +9,7 @@ use log::warn;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration ;
 use thiserror::Error;
 use tokio::sync::oneshot;
 use tracing::{error, info};

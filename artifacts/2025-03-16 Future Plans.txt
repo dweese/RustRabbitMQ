@@ -1,0 +1,410 @@
+## Refactoring Ideas for Your RabbitMQ Client
+### 1. Error Handling Framework
+Create a comprehensive error handling system:
+``` rust
+// errors.rs
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum RabbitMQError {
+    #[error("Connection error: {0}")]
+    Connection(#[from] lapin::Error),
+
+    #[error("Channel error: {0}")]
+    Channel(String),
+
+    #[error("Serialization error: {0}")]
+    Serialization(#[from] serde_json::Error),
+
+    #[error("Operation timeout after {0} seconds")]
+    Timeout(u64),
+
+    #[error("Configuration error: {0}")]
+    Config(String),
+}
+
+pub type Result<T> = std::result::Result<T, RabbitMQError>;
+```
+### 2. Configuration Management
+Use a typed configuration system:
+``` rust
+// config.rs
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RabbitMQConfig {
+    pub uri: String,
+    pub connection_timeout_secs: u64,
+    pub retry_interval_secs: u64,
+    pub max_retries: usize,
+    pub prefetch_count: u16,
+    // Add more configuration options
+}
+
+impl Default for RabbitMQConfig {
+    fn default() -> Self {
+        Self {
+            uri: "amqp://guest:guest@localhost:5672/%2f".into(),
+            connection_timeout_secs: 30,
+            retry_interval_secs: 5,
+            max_retries: 5,
+            prefetch_count: 10,
+        }
+    }
+}
+```
+### 3. Connection Management with Reconnection Logic
+``` rust
+// connection.rs
+use crate::{config::RabbitMQConfig, errors::Result};
+use lapin::{Connection, ConnectionProperties};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tracing::{error, info};
+
+pub struct ConnectionManager {
+    config: RabbitMQConfig,
+    connection: Arc<Mutex<Option<Connection>>>,
+}
+
+impl ConnectionManager {
+    pub fn new(config: RabbitMQConfig) -> Self {
+        Self {
+            config,
+            connection: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub async fn get_connection(&self) -> Result<Connection> {
+        let mut conn = self.connection.lock().await;
+
+        if let Some(connection) = conn.as_ref() {
+            if !connection.status().connected() {
+                *conn = None;
+            } else {
+                return Ok(connection.clone());
+            }
+        }
+
+        // Connection doesn't exist or is closed, create a new one
+        info!("Establishing RabbitMQ connection to {}...", self.config.uri);
+        let new_connection = self.establish_connection().await?;
+        *conn = Some(new_connection.clone());
+        Ok(new_connection)
+    }
+
+    async fn establish_connection(&self) -> Result<Connection> {
+        let mut attempts = 0;
+        let conn_props = ConnectionProperties::default()
+            .with_executor(tokio_executor_trait())
+            .with_connection_name("my_rabbitmq_client".into());
+
+        loop {
+            match Connection::connect(&self.config.uri, conn_props.clone()).await {
+                Ok(conn) => {
+                    info!("Successfully connected to RabbitMQ");
+                    return Ok(conn);
+                }
+                Err(err) => {
+                    attempts += 1;
+                    if attempts >= self.config.max_retries {
+                        error!("Failed to connect after {} attempts: {}", attempts, err);
+                        return Err(err.into());
+                    }
+                    error!("Connection attempt {} failed: {}. Retrying in {} seconds...",
+                           attempts, err, self.config.retry_interval_secs);
+                    tokio::time::sleep(tokio::time::Duration::from_secs(
+                        self.config.retry_interval_secs
+                    )).await;
+                }
+            }
+        }
+    }
+}
+
+fn tokio_executor_trait() -> impl lapin::executor::Executor {
+    tokio_executor::Executor::default()
+}
+
+// Define a simple executor adapter
+mod tokio_executor {
+    use lapin::executor::Executor;
+    use std::future::Future;
+    use std::pin::Pin;
+
+    #[derive(Clone, Default)]
+    pub struct Executor;
+
+    impl lapin::executor::Executor for Executor {
+        fn spawn(&self, future: Pin<Box<dyn Future<Output = ()> + Send>>) {
+            tokio::spawn(future);
+        }
+    }
+}
+```
+### 4. Channel Management
+``` rust
+// channel.rs
+use lapin::{Channel, options::BasicPublishOptions, BasicProperties};
+use crate::{connection::ConnectionManager, errors::Result};
+
+pub struct ChannelManager {
+    connection_manager: ConnectionManager,
+    prefetch_count: u16,
+}
+
+impl ChannelManager {
+    pub fn new(connection_manager: ConnectionManager, prefetch_count: u16) -> Self {
+        Self {
+            connection_manager,
+            prefetch_count,
+        }
+    }
+
+    pub async fn get_channel(&self) -> Result<Channel> {
+        let connection = self.connection_manager.get_connection().await?;
+        let channel = connection.create_channel().await?;
+
+        // Set QoS
+        channel.basic_qos(self.prefetch_count, lapin::options::BasicQosOptions::default()).await?;
+
+        Ok(channel)
+    }
+}
+```
+### 5. Message Publishing Abstraction
+``` rust
+// publisher.rs
+use crate::{channel::ChannelManager, errors::Result};
+use lapin::{
+    options::BasicPublishOptions,
+    BasicProperties,
+};
+use serde::Serialize;
+
+pub struct Publisher {
+    channel_manager: ChannelManager,
+}
+
+impl Publisher {
+    pub fn new(channel_manager: ChannelManager) -> Self {
+        Self { channel_manager }
+    }
+
+    pub async fn publish<T: Serialize>(&self,
+                                     exchange: &str,
+                                     routing_key: &str,
+                                     message: &T,
+                                     properties: BasicProperties) -> Result<()> {
+        let payload = serde_json::to_vec(message)?;
+        let channel = self.channel_manager.get_channel().await?;
+
+        channel
+            .basic_publish(
+                exchange,
+                routing_key,
+                BasicPublishOptions::default(),
+                &payload,
+                properties,
+            )
+            .await?;
+
+        Ok(())
+    }
+}
+```
+### 6. Message Consuming Abstraction
+``` rust
+// consumer.rs
+use crate::{channel::ChannelManager, errors::Result};
+use lapin::{
+    options::{BasicConsumeOptions, BasicAckOptions},
+    message::Delivery,
+};
+use async_trait::async_trait;
+use serde::de::DeserializeOwned;
+use std::future::Future;
+use std::sync::Arc;
+use tracing::{info, error};
+
+#[async_trait]
+pub trait MessageHandler<T: DeserializeOwned + Send + 'static> {
+    async fn handle(&self, message: T, delivery: Delivery) -> Result<()>;
+}
+
+pub struct Consumer {
+    channel_manager: ChannelManager,
+}
+
+impl Consumer {
+    pub fn new(channel_manager: ChannelManager) -> Self {
+        Self { channel_manager }
+    }
+
+    pub async fn consume<T, H>(&self,
+                            queue: &str,
+                            consumer_tag: &str,
+                            handler: H) -> Result<()>
+    where
+        T: DeserializeOwned + Send + 'static,
+        H: MessageHandler<T> + Send + Sync + 'static,
+    {
+        let channel = self.channel_manager.get_channel().await?;
+        let handler = Arc::new(handler);
+
+        let mut consumer = channel
+            .basic_consume(
+                queue,
+                consumer_tag,
+                BasicConsumeOptions::default(),
+                lapin::types::FieldTable::default(),
+            )
+            .await?;
+
+        info!("Started consuming from queue: {}", queue);
+
+        while let Some(delivery) = consumer.next().await {
+            match delivery {
+                Ok(delivery) => {
+                    let delivery_handler = handler.clone();
+                    let _ = tokio::spawn(async move {
+                        match serde_json::from_slice::<T>(&delivery.data) {
+                            Ok(message) => {
+                                if let Err(e) = delivery_handler.handle(message, delivery.clone()).await {
+                                    error!("Failed to handle message: {}", e);
+                                    if let Err(nack_err) = delivery.nack(BasicAckOptions::default()).await {
+                                        error!("Failed to nack message: {}", nack_err);
+                                    }
+                                } else if let Err(ack_err) = delivery.ack(BasicAckOptions::default()).await {
+                                    error!("Failed to ack message: {}", ack_err);
+                                }
+                            }
+                            Err(e) => {
+                                error!("Failed to deserialize message: {}", e);
+                                if let Err(nack_err) = delivery.nack(BasicAckOptions::default()).await {
+                                    error!("Failed to nack message: {}", nack_err);
+                                }
+                            }
+                        }
+                    });
+                }
+                Err(e) => {
+                    error!("Failed to receive delivery: {}", e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+```
+### 7. Putting It All Together
+``` rust
+// lib.rs
+mod channel;
+mod config;
+mod connection;
+mod consumer;
+mod errors;
+mod publisher;
+
+pub use channel::ChannelManager;
+pub use config::RabbitMQConfig;
+pub use connection::ConnectionManager;
+pub use consumer::{Consumer, MessageHandler};
+pub use errors::{Result, RabbitMQError};
+pub use publisher::Publisher;
+
+/// Creates a full RabbitMQ client with default configuration
+pub fn create_default_client() -> (Publisher, Consumer) {
+    let config = RabbitMQConfig::default();
+    create_client(config)
+}
+
+/// Creates a full RabbitMQ client with custom configuration
+pub fn create_client(config: RabbitMQConfig) -> (Publisher, Consumer) {
+    let connection_manager = ConnectionManager::new(config.clone());
+    let channel_manager = ChannelManager::new(connection_manager.clone(), config.prefetch_count);
+
+    let publisher = Publisher::new(channel_manager.clone());
+    let consumer = Consumer::new(channel_manager);
+
+    (publisher, consumer)
+}
+```
+### 8. Example Usage in main.rs
+``` rust
+// main.rs
+use rust_rabbitmq::{create_default_client, MessageHandler, Result};
+use async_trait::async_trait;
+use lapin::{message::Delivery, BasicProperties};
+use serde::{Deserialize, Serialize};
+use std::time::Duration;
+use tokio::time::sleep;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct TestMessage {
+    id: String,
+    content: String,
+}
+
+struct MyMessageHandler;
+
+#[async_trait]
+impl MessageHandler<TestMessage> for MyMessageHandler {
+    async fn handle(&self, message: TestMessage, _delivery: Delivery) -> Result<()> {
+        println!("Received message: {:?}", message);
+        Ok(())
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Initialize logging
+    tracing_subscriber::fmt::init();
+
+    // Load environment variables from .env file
+    dotenv::dotenv().ok();
+
+    // Create RabbitMQ client with default configuration
+    let (publisher, consumer) = create_default_client();
+
+    // Publish a test message
+    let message = TestMessage {
+        id: uuid::Uuid::new_v4().to_string(),
+        content: "Hello, RabbitMQ!".to_string(),
+    };
+
+    publisher.publish(
+        "",
+        "test_queue",
+        &message,
+        BasicProperties::default()
+            .with_content_type("application/json".into())
+            .with_delivery_mode(2), // persistent
+    ).await?;
+
+    println!("Published message: {:?}", message);
+
+    // In a real application, you might want to run this in a separate task
+    tokio::spawn(async move {
+        consumer
+            .consume("test_queue", "my_consumer", MyMessageHandler)
+            .await
+            .unwrap();
+    });
+
+    // Keep the application running for demonstration
+    loop {
+        sleep(Duration::from_secs(1)).await;
+    }
+}
+```
+This refactoring provides:
+1. A clear separation of concerns
+2. Error handling with proper error types
+3. Automatic reconnection handling
+4. Simple abstractions for publishing and consuming messages
+5. Type-safe message handling with easy serialization/deserialization
+
+You can implement this incrementally, starting with the core pieces (errors, configuration, connection management) and then building up to the higher-level abstractions.

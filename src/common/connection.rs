@@ -1,8 +1,7 @@
 use lapin::{options::*, types::FieldTable, Connection, ConnectionProperties, Error as LapinError};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{error, info};
-use rand::Rng; // For random jitter
 
 pub struct ConnectionManager {
     uri: String,

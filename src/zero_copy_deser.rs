@@ -1,17 +1,17 @@
 // Another advanced example for advanced_patterns.rs
 
 use anyhow::Result;
-use futures::{Stream, StreamExt};
+use futures::StreamExt;
 use lapin::{
-    options::{BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicPublishOptions},
-    Channel, Connection, ConnectionProperties, Consumer,
+    message::Delivery,
+    options::{BasicAckOptions, BasicConsumeOptions, BasicNackOptions},
+    Channel
 };
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
-    collections::{HashMap, VecDeque},
+    collections::VecDeque,
     future::Future,
-    pin::Pin,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -21,10 +21,9 @@ use tokio::{
     sync::{mpsc, Semaphore},
     time,
 };
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{ error, info, instrument };
 use uuid::Uuid;
 
-use crate::common;
 use crate::common::ConnectionManager;
 
 // 1. Zero-copy deserialization with lifetimes
@@ -124,33 +123,37 @@ impl RateLimitedProcessor {
     #[instrument(skip(self, processor))]
     pub async fn process_messages<F, Fut>(&mut self, processor: F) -> Result<()>
     where
-        F: Fn(BorrowedMessage<'_>) -> Fut + Send + Sync + Clone + 'static,
+        F: Fn(OwnedMessage) -> Fut + Send + Sync + Clone + 'static,
         Fut: Future<Output = Result<()>> + Send + 'static,
     {
+        // Clone semaphore BEFORE calling setup()
+        let semaphore = Arc::clone(&self.semaphore);
+        let batch_size = self.batch_size;
+        let queue_name = self.queue_name.clone();
+
+        // Now call setup
         let channel = self.setup().await?;
 
         // Set up a consumer with prefetch limit for backpressure
         channel
-            .basic_qos(self.batch_size as u16, Default::default())
+            .basic_qos(batch_size as u16, Default::default()) // Use local variable here
             .await?;
 
         let mut consumer = channel
             .basic_consume(
-                &self.queue_name,
+                &queue_name,
                 &format!("processor-{}", Uuid::new_v4()),
                 BasicConsumeOptions::default(),
                 Default::default(),
             )
             .await?;
-
         // Create a channel to send batches of messages for processing
         let (batch_tx, mut batch_rx) =
-            mpsc::channel::<Vec<(lapin::message::Delivery, BorrowedMessage<'_>)>>(100);
+            mpsc::channel::<Vec<(lapin::message::Delivery, OwnedMessage)>>(100);
 
         // Process batches
-        let semaphore = self.semaphore.clone();
         let processor_clone = processor.clone();
-        let channel_clone = channel.clone();
+        // let channel_clone = channel.clone();
 
         // Spawn a task to collect and process batches
         tokio::spawn(async move {
@@ -164,11 +167,10 @@ impl RateLimitedProcessor {
                     }
                 };
 
-                // Process each message in the batch
                 for (delivery, message) in batch {
                     let processor = processor_clone.clone();
 
-                    // Process the message
+                    // Process the message (now accepting OwnedMessage)
                     match processor(message).await {
                         Ok(_) => {
                             // Acknowledge message
@@ -192,7 +194,9 @@ impl RateLimitedProcessor {
         });
 
         // Collect messages into batches
-        let mut current_batch = Vec::with_capacity(self.batch_size);
+        // Change the type declaration of current_batch
+        let mut current_batch: Vec<(Delivery, OwnedMessage)> = Vec::with_capacity(self.batch_size);
+
         let mut batch_timer = time::interval(self.batch_timeout);
 
         info!(
@@ -202,49 +206,50 @@ impl RateLimitedProcessor {
 
         loop {
             tokio::select! {
-                Some(delivery_result) = consumer.next() => {
-                    match delivery_result {
-                        Ok(delivery) => {
-                            // Try to parse as a borrowed message for zero-copy
-                            match serde_json::from_slice::<BorrowedMessage>(&delivery.data) {
-                                Ok(message) => {
-                                    current_batch.push((delivery, message));
+                            Some(delivery_result) = consumer.next() => {
+                                match delivery_result {
+                                    Ok(delivery) => {
+                                        // Try to parse as a borrowed message for zero-copy
+            match serde_json::from_slice::<OwnedMessage>(&delivery.data) {
+                Ok(message) => {
+                    current_batch.push((delivery, message)); // Now we can move delivery safely
 
-                                    // If batch is full, send it for processing
-                                    if current_batch.len() >= self.batch_size {
-                                        if let Err(_) = batch_tx.send(std::mem::replace(&mut current_batch, Vec::with_capacity(self.batch_size))).await {
-                                            error!("Failed to send batch for processing, receiver dropped");
-                                            break;
+
+                                                // If batch is full, send it for processing
+                                                if current_batch.len() >= self.batch_size {
+                                                    if let Err(_) = batch_tx.send(std::mem::replace(&mut current_batch, Vec::with_capacity(self.batch_size))).await {
+                                                        error!("Failed to send batch for processing, receiver dropped");
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            Err(e) => {
+                                                error!("Failed to deserialize message: {}", e);
+                                                if let Err(e) = delivery.nack(BasicNackOptions::default()).await {
+                                                    error!("Failed to negative-acknowledge message: {}", e);
+                                                }
+                                            }
                                         }
                                     }
-                                }
-                                Err(e) => {
-                                    error!("Failed to deserialize message: {}", e);
-                                    if let Err(e) = delivery.nack(BasicNackOptions::default()).await {
-                                        error!("Failed to negative-acknowledge message: {}", e);
+                                    Err(e) => {
+                                        error!("Error receiving message: {}", e);
                                     }
                                 }
                             }
+                            _ = batch_timer.tick() => {
+                                // Send any pending messages in the batch
+                                if !current_batch.is_empty() {
+                                    if let Err(_) = batch_tx.send(std::mem::replace(&mut current_batch, Vec::with_capacity(self.batch_size))).await {
+                                        error!("Failed to send batch for processing, receiver dropped");
+                                        break;
+                                    }
+                                }
+                            }
+                            else => {
+                                error!("Consumer or timer stream ended unexpectedly");
+                                break;
+                            }
                         }
-                        Err(e) => {
-                            error!("Error receiving message: {}", e);
-                        }
-                    }
-                }
-                _ = batch_timer.tick() => {
-                    // Send any pending messages in the batch
-                    if !current_batch.is_empty() {
-                        if let Err(_) = batch_tx.send(std::mem::replace(&mut current_batch, Vec::with_capacity(self.batch_size))).await {
-                            error!("Failed to send batch for processing, receiver dropped");
-                            break;
-                        }
-                    }
-                }
-                else => {
-                    error!("Consumer or timer stream ended unexpectedly");
-                    break;
-                }
-            }
         }
 
         Ok(())
@@ -268,7 +273,7 @@ async fn main() -> Result<()> {
     .await?;
 
     // Define a processor function that uses zero-copy deserialization
-    let process = |message: BorrowedMessage<'_>| async move {
+    let process = |message: OwnedMessage| async move {
         info!(
             "Processing message {} with priority {}",
             message.id, message.priority

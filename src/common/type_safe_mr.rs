@@ -7,16 +7,14 @@ use async_trait::async_trait;
 use lapin::{
     options::{BasicAckOptions, BasicConsumeOptions, BasicPublishOptions},
     protocol::basic::AMQPProperties,
-    Channel, Consumer, Connection, ConnectionProperties,
+    Channel,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     collections::HashMap,
     marker::PhantomData,
-    sync::{Arc, RwLock},
 };
 use futures_lite::StreamExt;
-use tokio::sync::mpsc;
 use tracing::{ error, info, instrument, warn};
 use uuid::Uuid;
 
