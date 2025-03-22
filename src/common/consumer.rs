@@ -51,12 +51,14 @@ impl MessageConsumer {
         })
     }
 
-    async fn setup_channel(&mut self) -> Result<&Channel, ConsumerError> {
+    async fn setup_channel(&mut self) -> Result<Channel, ConsumerError> {
         if let Some(channel) = &self.channel {
             if channel.status().connected() {
-                return Ok(channel);
+                // Return a clone of the channel instead of a reference
+                return Ok(channel.clone());
             }
         }
+
 
         let connection = self.connection_manager.get_connection().await?;
         let channel = connection
@@ -113,9 +115,9 @@ impl MessageConsumer {
             .await
             .map_err(|e| ConsumerError::ChannelError(format!("Failed to bind queue: {}", e)))?;
 
-        self.channel = Some(channel);
+        self.channel = Some(channel.clone());
 
-        Ok(self.channel.as_ref().unwrap())
+        Ok(channel)
     }
 
     pub async fn start_consuming<F>(&mut self, handler: F) -> Result<(), ConsumerError>

@@ -74,6 +74,12 @@ impl RpcClient {
         Ok(client)
     }
 
+    fn get_channel(&self) -> Result<&Channel, RpcError> {
+        self.channel.as_ref()
+            .ok_or_else(|| RpcError::ChannelError("No channel available".to_string()))
+    }
+
+
     async fn setup(&mut self) -> Result<&Channel, RpcError> {
         if let Some(channel) = &self.channel {
             if channel.status().connected() {
@@ -174,7 +180,8 @@ impl RpcClient {
         routing_key: &str,
         request: &T,
     ) -> Result<R, RpcError> {
-        let channel = self.setup().await?;
+       self.setup().await?;
+        let channel = self.get_channel()?;
 
         // Generate correlation ID
         let correlation_id = Uuid::new_v4().to_string();
@@ -285,7 +292,9 @@ impl RpcServer {
         F: Fn(InventoryRequest) -> Fut + Send + Sync + 'static,
         Fut: std::future::Future<Output = Result<InventoryResponse, RpcError>> + Send + 'static,
     {
-        let channel = self.setup().await?;
+        self.setup().await?;
+        let channel = self.get_channel()?;
+
 
         // Set prefetch count
         channel

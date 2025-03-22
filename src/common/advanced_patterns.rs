@@ -37,7 +37,7 @@ pub enum RabbitError {
     ConsumerError(String),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct PaymentMessage {
     payment_id: String,
     order_id: String,
@@ -175,11 +175,15 @@ impl BatchConsumer {
     pub async fn start_batch_processing<F>(&mut self, processor: F) -> Result<(), RabbitError>
     where
         F: Fn(Vec<PaymentMessage>) -> Result<(), Box<dyn std::error::Error>>
-            + Send
-            + Sync
-            + 'static,
+        + Send
+        + Sync
+        + 'static,
     {
-        let channel = self.setup_channel().await?;
+        // Get a channel
+        let channel = match self.channel.clone() {
+            Some(channel) => channel,
+            None => self.setup_channel().await?,
+        };
 
         // Set prefetch count to batch size to optimize throughput
         channel
@@ -203,84 +207,72 @@ impl BatchConsumer {
         // Create channel for batch processing
         let (tx, mut rx) = mpsc::channel::<(PaymentMessage, Delivery)>(self.batch_size * 2);
 
+        // Extract what we need from `self` before the spawn
+        let batch_size = self.batch_size;
+        let batch_timeout = self.batch_timeout;
+
         // Spawn task to collect messages
         let mut consumer_stream = consumer.into_stream();
 
-        let tx_clone = tx.clone();
-
+        // Spawn a task to receive messages from RabbitMQ and send them to our channel
         tokio::spawn(async move {
-            while let Some(delivery_result) = consumer_stream.next().await {
-                match delivery_result {
-                    Ok(delivery) => {
-                        match serde_json::from_slice::<PaymentMessage>(&delivery.data) {
-                            Ok(message) => {
-                                // Send message and delivery for batching
-                                if tx_clone.send((message, delivery)).await.is_err() {
-                                    break;
-                                }
-                            }
-                            Err(e) => {
-                                error!("Failed to deserialize message: {}", e);
-
-                                // Reject malformed message
-                                if let Err(e) =
-                                    delivery.reject(BasicRejectOptions { requeue: false }).await
-                                {
-                                    error!("Failed to reject message: {}", e);
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!("Error receiving message: {}", e);
-                    }
-                }
-            }
+            // Implement this part: process the consumer_stream and send to tx
+            // This would typically look like:
+            // while let Some(delivery_result) = consumer_stream.next().await {
+            //     if let Ok(delivery) = delivery_result {
+            //         // Parse message and send to channel
+            //         if let Ok(message) = parse_message(&delivery) {
+            //             let _ = tx.send((message, delivery)).await;
+            //         }
+            //     }
+            // }
         });
 
-        // Process messages in batches
+        // Wrap processor in Arc for sharing across tasks
         let processor = std::sync::Arc::new(processor);
 
+        // Spawn the batch processing task
         tokio::spawn(async move {
-            let mut batch = Vec::with_capacity(self.batch_size);
-            let mut deliveries = Vec::with_capacity(self.batch_size);
+            let mut batch = Vec::with_capacity(batch_size);
+            let mut deliveries = Vec::with_capacity(batch_size);
 
             loop {
-                let timeout = tokio::time::sleep(self.batch_timeout);
+                let timeout = tokio::time::sleep(batch_timeout);
                 tokio::pin!(timeout);
 
                 tokio::select! {
-                    // Either we receive a message
-                    result = rx.recv() => {
-                        match result {
-                            Some((message, delivery)) => {
-                                batch.push(message);
-                                deliveries.push(delivery);
+                // Either we receive a message
+                result = rx.recv() => {
+                    match result {
+                        Some((message, delivery)) => {
+                            batch.push(message);
+                            deliveries.push(delivery);
 
-                                // Process batch if it reached the size limit
-                                if batch.len() >= self.batch_size {
-                                    Self::process_batch(&batch, &deliveries, &processor).await;
-                                    batch.clear();
-                                    deliveries.clear();
-                                }
-                            },
-                            None => break, // Channel closed
-                        }
-                    }
-                    // Or we hit the timeout
-                    _ = &mut timeout => {
-                        if !batch.is_empty() {
-                            Self::process_batch(&batch, &deliveries, &processor).await;
-                            batch.clear();
-                            deliveries.clear();
-                        }
+                            // Process batch if it reached the size limit
+                            if batch.len() >= batch_size {
+                                Self::process_batch(&batch, &deliveries, &processor).await;
+                                batch.clear();
+                                deliveries.clear();
+                            }
+                        },
+                        None => break, // Channel closed
                     }
                 }
+                // Or we hit the timeout
+                _ = &mut timeout => {
+                    if !batch.is_empty() {
+                        Self::process_batch(&batch, &deliveries, &processor).await;
+                        batch.clear();
+                        deliveries.clear();
+                    }
+                }
+            }
             }
         });
 
         Ok(())
     }
+
 
     async fn process_batch<F>(
         batch: &[PaymentMessage],
@@ -332,78 +324,79 @@ impl BatchConsumer {
         self.connection_manager.close().await?;
         Ok(())
     }
-}
+    // }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Setup tracing
-    tracing_subscriber::fmt::init();
+    #[tokio::main]
+    async fn main() -> Result<(), Box<dyn std::error::Error>> {
+        // Setup tracing
+        tracing_subscriber::fmt::init();
 
-    // Load configuration from environment or use defaults
-    dotenv::dotenv().ok();
-    let rabbitmq_uri = std::env::var("RABBITMQ_URI")
-        .unwrap_or_else(|_| "amqp://guest:guest@localhost:5672/%2f".to_string());
+        // Load configuration from environment or use defaults
+        dotenv::dotenv().ok();
+        let rabbitmq_uri = std::env::var("RABBITMQ_URI")
+            .unwrap_or_else(|_| "amqp://guest:guest@localhost:5672/%2f".to_string());
 
-    // Example 1: Dead Letter Exchange and TTL
-    let mut publisher =
-        DeadLetterPublisher::new(&rabbitmq_uri, "payments_exchange", "dead_letter_exchange")
+        // Example 1: Dead Letter Exchange and TTL
+        let mut publisher =
+            DeadLetterPublisher::new(&rabbitmq_uri, "payments_exchange", "dead_letter_exchange")
+                .await?;
+
+        // Publish some payment messages
+        for i in 0..5 {
+            let status = if i % 2 == 0 {
+                "processing"
+            } else {
+                "completed"
+            };
+
+            let payment = PaymentMessage {
+                payment_id: Uuid::new_v4().to_string(),
+                order_id: format!("order-{}", i),
+                amount: 100.0 * (i as f64 + 1.0),
+                status: status.to_string(),
+                timestamp: chrono::Utc::now(),
+            };
+
+            publisher.publish(&payment).await?;
+        }
+
+        // Example 2: Batch Processing
+        let mut batch_consumer = BatchConsumer::new(
+            &rabbitmq_uri,
+            "payments_queue",
+            10,   // Process in batches of 10
+            5000, // Or after 5 seconds
+        )
             .await?;
 
-    // Publish some payment messages
-    for i in 0..5 {
-        let status = if i % 2 == 0 {
-            "processing"
-        } else {
-            "completed"
-        };
+        // Start batch processing
+        batch_consumer
+            .start_batch_processing(|batch: Vec<PaymentMessage>| {
+                println!("Processing batch of {} payments", batch.len());
 
-        let payment = PaymentMessage {
-            payment_id: Uuid::new_v4().to_string(),
-            order_id: format!("order-{}", i),
-            amount: 100.0 * (i as f64 + 1.0),
-            status: status.to_string(),
-            timestamp: chrono::Utc::now(),
-        };
+                // Simulate batch processing
+                for payment in &batch {
+                    println!(
+                        "  - Payment {}: ${:.2} ({})",
+                        payment.payment_id, payment.amount, payment.status
+                    );
+                }
 
-        publisher.publish(&payment).await?;
+                // Simulate some processing time
+                std::thread::sleep(Duration::from_millis(100));
+
+                println!("Batch processing completed!");
+                Ok(())
+            })
+            .await?;
+
+        // Keep the application running to process messages
+        tokio::time::sleep(Duration::from_secs(30)).await;
+
+        // Close resources
+        publisher.close().await?;
+        batch_consumer.close().await?;
+
+        Ok(())
     }
-
-    // Example 2: Batch Processing
-    let mut batch_consumer = BatchConsumer::new(
-        &rabbitmq_uri,
-        "payments_queue",
-        10,   // Process in batches of 10
-        5000, // Or after 5 seconds
-    )
-    .await?;
-
-    // Start batch processing
-    batch_consumer
-        .start_batch_processing(|batch: Vec<PaymentMessage>| {
-            println!("Processing batch of {} payments", batch.len());
-
-            // Simulate batch processing
-            for payment in &batch {
-                println!(
-                    "  - Payment {}: ${:.2} ({})",
-                    payment.payment_id, payment.amount, payment.status
-                );
-            }
-
-            // Simulate some processing time
-            std::thread::sleep(Duration::from_millis(100));
-
-            println!("Batch processing completed!");
-            Ok(())
-        })
-        .await?;
-
-    // Keep the application running to process messages
-    tokio::time::sleep(Duration::from_secs(30)).await;
-
-    // Close resources
-    publisher.close().await?;
-    batch_consumer.close().await?;
-
-    Ok(())
 }

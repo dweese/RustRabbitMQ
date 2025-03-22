@@ -1,162 +1,113 @@
 use lapin::{
-    options::*, types::FieldTable, BasicProperties, Channel, Error as LapinError,
-    ExchangeKind,
+    options::{BasicPublishOptions, ExchangeDeclareOptions},
+    types::FieldTable,
+    BasicProperties, Channel, Connection, ConnectionProperties, ExchangeKind,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use thiserror::Error;
-use tracing::{error, info};
-use uuid::Uuid;
-
-// With this (depending on what you need):
-use super::connection::ConnectionManager; // Access the ConnectionManager from connection.rs module
 
 #[derive(Error, Debug)]
 pub enum PublishError {
-    #[error("Failed to connect to RabbitMQ: {0}")]
-    ConnectionError(#[from] LapinError),
-
-    #[error("Failed to serialize message: {0}")]
-    SerializationError(#[from] serde_json::Error),
+    #[error("Connection error: {0}")]
+    ConnectionError(String),
 
     #[error("Channel error: {0}")]
     ChannelError(String),
 
+    #[error("Exchange declaration error: {0}")]
+    ExchangeError(String),
+
     #[error("Failed to publish message: {0}")]
     PublishError(String),
+
+    #[error("Serialization error: {0}")]
+    SerializationError(#[from] serde_json::Error),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct OrderMessage {
-    order_id: String,
-    customer_id: String,
-    items: Vec<String>,
-    total: f64,
-    timestamp: chrono::DateTime<chrono::Utc>,
-}
-
-struct Publisher {
-    connection_manager: ConnectionManager,
-    channel: Option<Channel>,
+pub struct Publisher {
+    amqp_uri: String,
     exchange: String,
+    connection: Option<Connection>,
+    channel: Option<Channel>,
 }
 
 impl Publisher {
-    pub async fn new(uri: &str, exchange: &str) -> Result<Self, PublishError> {
-        let connection_manager = ConnectionManager::new(uri).with_reconnect_policy(5, 1000);
-
-        Ok(Publisher {
-            connection_manager,
-            channel: None,
+    pub async fn new(amqp_uri: &str, exchange: &str) -> Result<Self, PublishError> {
+        Ok(Self {
+            amqp_uri: amqp_uri.to_string(),
             exchange: exchange.to_string(),
+            connection: None,
+            channel: None,
         })
     }
 
-    async fn get_channel(&mut self) -> Result<&Channel, PublishError> {
+    pub async fn publish<T: Serialize>(&mut self, routing_key: &str, data: &T) -> Result<(), PublishError> {
+        let payload = serde_json::to_vec(data).map_err(PublishError::SerializationError)?;
+        self.publish_raw(payload, routing_key).await
+    }
+
+    async fn publish_raw(&mut self, payload: Vec<u8>, routing_key: &str) -> Result<(), PublishError> {
+        let exchange = self.exchange.clone();
+
+        // Ensure we have a working connection
+        self.ensure_connected().await?;
+
+        // Safe to unwrap as ensure_connected guarantees a valid channel
+        let channel = self.channel.as_ref().unwrap();
+
+        channel
+            .basic_publish(
+                &exchange,
+                routing_key,
+                BasicPublishOptions::default(),
+                &payload,
+                BasicProperties::default(),
+            )
+            .await
+            .map_err(|e| PublishError::PublishError(format!("Failed to publish message: {}", e)))?;
+
+        Ok(())
+    }
+
+    // This method doesn't return a reference, just ensures we have a working connection
+    async fn ensure_connected(&mut self) -> Result<(), PublishError> {
+        // Check if we already have a working channel
         if let Some(channel) = &self.channel {
             if channel.status().connected() {
-                return Ok(channel);
+                return Ok(());
             }
         }
 
-        let connection = self.connection_manager.get_connection().await?;
+        // We need a new connection + channel
+        let connection = Connection::connect(
+            &self.amqp_uri,
+            ConnectionProperties::default(),
+        )
+            .await
+            .map_err(|e| PublishError::ConnectionError(format!("Failed to connect: {}", e)))?;
+
         let channel = connection
             .create_channel()
             .await
-            .map_err(|e| PublishError::ChannelError(e.to_string()))?;
+            .map_err(|e| PublishError::ChannelError(format!("Failed to create channel: {}", e)))?;
 
-        // Declare the exchange
+        // Declare exchange if needed
         channel
             .exchange_declare(
                 &self.exchange,
-                ExchangeKind::Direct,
-                ExchangeDeclareOptions {
-                    durable: true,
-                    ..ExchangeDeclareOptions::default()
-                },
+                ExchangeKind::Topic,
+                ExchangeDeclareOptions::default(),
                 FieldTable::default(),
             )
             .await
             .map_err(|e| {
-                PublishError::ChannelError(format!("Failed to declare exchange: {}", e))
+                PublishError::ExchangeError(format!("Failed to declare exchange: {}", e))
             })?;
 
+        // Store both connection and channel
+        self.connection = Some(connection);
         self.channel = Some(channel);
-        Ok(self.channel.as_ref().unwrap())
-    }
-
-    pub async fn publish<T: Serialize>(
-        &mut self,
-        routing_key: &str,
-        message: &T,
-    ) -> Result<(), PublishError> {
-        let payload = serde_json::to_vec(message)?;
-        let channel = self.get_channel().await?;
-
-        let properties = BasicProperties::default()
-            .with_message_id(Uuid::new_v4().to_string().into())
-            .with_content_type("application/json".into())
-            .with_timestamp(chrono::Utc::now().timestamp() as u64);
-
-        channel
-            .basic_publish(
-                &self.exchange,
-                routing_key,
-                BasicPublishOptions::default(),
-                &payload,
-                properties,
-            )
-            .await
-            .map_err(|e| PublishError::PublishError(e.to_string()))?;
-
-        info!(
-            "Published message to exchange '{}' with routing key '{}'",
-            self.exchange, routing_key
-        );
 
         Ok(())
     }
-
-    pub async fn close(&mut self) -> Result<(), PublishError> {
-        if let Some(channel) = &self.channel {
-            channel
-                .close(0, "Closing publisher")
-                .await
-                .map_err(|e| PublishError::ChannelError(e.to_string()))?;
-        }
-
-        self.connection_manager.close().await?;
-        Ok(())
-    }
-}
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Setup tracing
-    tracing_subscriber::fmt::init();
-
-    // Load configuration from environment or use defaults
-    dotenv::dotenv().ok();
-    let rabbitmq_uri = std::env::var("RABBITMQ_URI")
-        .unwrap_or_else(|_| "amqp://guest:guest@localhost:5672/%2f".to_string());
-
-    // Create publisher
-    let mut publisher = Publisher::new(&rabbitmq_uri, "orders").await?;
-
-    // Create and publish a sample order
-    let order = OrderMessage {
-        order_id: Uuid::new_v4().to_string(),
-        customer_id: "customer-123".to_string(),
-        items: vec!["product-1".to_string(), "product-2".to_string()],
-        total: 59.99,
-        timestamp: chrono::Utc::now(),
-    };
-
-    // Publish the message
-    publisher.publish("new_order", &order).await?;
-    info!("Successfully published order: {:?}", order);
-
-    // Gracefully close the publisher
-    publisher.close().await?;
-
-    Ok(())
 }

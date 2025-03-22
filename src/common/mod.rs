@@ -6,6 +6,9 @@ pub mod publisher;
 pub mod request_response;
 pub mod type_safe_mr;
 mod tokio_exec;
+mod batch_processor;
+mod channel_manager;
+mod amqp_client;
 
 // Re-export specific items to simplify imports elsewhere
 pub use connection::ConnectionManager;
