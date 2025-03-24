@@ -14,7 +14,7 @@ use thiserror::Error;
 use tokio::sync::oneshot;
 use tracing::{error, info};
 use uuid::Uuid;
-
+use crate::common::errors::RabbitError;
 use super::connection::ConnectionManager; // Access the ConnectionManager from connection.rs module
 
 #[derive(Error, Debug)]
@@ -80,100 +80,42 @@ impl RpcClient {
     }
 
 
+
+
     async fn setup(&mut self) -> Result<&Channel, RpcError> {
+        // First check if we have a valid channel
         if let Some(channel) = &self.channel {
             if channel.status().connected() {
                 return Ok(channel);
             }
         }
 
-        let connection = self.connection_manager.get_connection().await?;
-        let channel = connection
-            .create_channel()
-            .await
+        // If we don't have a valid channel, create a new one
+        let connection = self.connection_manager.get_connection().await
+            .map_err(|e| RpcError::ConnectionError(e.to_string()))?;
+
+        let channel = connection.create_channel().await
             .map_err(|e| RpcError::ChannelError(e.to_string()))?;
 
-        // Declare response queue (exclusive, auto-delete)
-        channel
-            .queue_declare(
-                &self.response_queue,
-                QueueDeclareOptions {
-                    exclusive: true,
-                    auto_delete: true,
-                    ..QueueDeclareOptions::default()
-                },
-                FieldTable::default(),
-            )
-            .await
-            .map_err(|e| {
-                RpcError::ChannelError(format!("Failed to declare response queue: {}", e))
-            })?;
+        // Setup exchange
+        channel.exchange_declare(
+            &self.exchange,
+            lapin::ExchangeKind::Topic,
+            ExchangeDeclareOptions {
+                durable: true,
+                ..ExchangeDeclareOptions::default()
+            },
+            FieldTable::default(),
+        ).await.map_err(|e| RpcError::ExchangeError(e.to_string()))?;
 
-        // Setup consumer for response queue
-        let consumer = channel
-            .basic_consume(
-                &self.response_queue,
-                "rpc_client",
-                BasicConsumeOptions::default(),
-                FieldTable::default(),
-            )
-            .await
-            .map_err(|e| RpcError::ChannelError(format!("Failed to create consumer: {}", e)))?;
-
-        let correlation_map = self.correlation_map.clone();
-
-        // Process responses
-        let mut consumer_stream = consumer.into_stream();
-
-        tokio::spawn(async move {
-            while let Some(delivery_result) = consumer_stream.next().await {
-                match delivery_result {
-                    Ok(delivery) => {
-                        if let Some(correlation_id) = delivery.properties.correlation_id() {
-                            let correlation_id = correlation_id.as_str().to_string();
-
-                            // Find the corresponding callback
-                            let mut map = correlation_map.lock().unwrap();
-                            if let Some(callback) = map.remove(&correlation_id) {
-                                // Acknowledge the message
-                                if let Err(e) = delivery.ack(BasicAckOptions::default()).await {
-                                    error!("Failed to acknowledge response: {}", e);
-                                }
-
-                                // Send the response back
-                                let _ = callback.send(Ok(delivery.data));
-                            } else {
-                                error!(
-                                    "Received response with unknown correlation ID: {}",
-                                    correlation_id
-                                );
-
-                                // Reject the message
-                                if let Err(e) = delivery.reject(BasicRejectOptions::default()).await
-                                {
-                                    error!("Failed to reject message: {}", e);
-                                }
-                            }
-                        } else {
-                            error!("Received response without correlation ID");
-
-                            // Reject the message
-                            if let Err(e) = delivery.reject(BasicRejectOptions::default()).await {
-                                error!("Failed to reject message: {}", e);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!("Error receiving response: {}", e);
-                    }
-                }
-            }
-        });
-
+        // We need to create temporary storage because we can't assign directly
+        let mut new_channel = None;
+        std::mem::swap(&mut new_channel, &mut self.channel);
         self.channel = Some(channel);
+
+        // Return a reference to the newly assigned channel
         Ok(self.channel.as_ref().unwrap())
     }
-
     pub async fn call<T: Serialize, R: for<'de> Deserialize<'de>>(
         &mut self,
         exchange: &str,
@@ -259,7 +201,7 @@ impl RpcServer {
 
     async fn setup(&mut self) -> Result<&Channel, RpcError> {
         if let Some(channel) = &self.channel {
-            if channel.status().is_connected() {
+            if channel.status().connected() {
                 return Ok(channel);
             }
         }
@@ -286,6 +228,21 @@ impl RpcServer {
         self.channel = Some(channel);
         Ok(self.channel.as_ref().unwrap())
     }
+
+    // Add this helper method to your implementation
+    async fn ensure_channel(&mut self) -> Result<&Channel, RabbitError> {
+        if let Some(channel) = &self.channel {
+            if channel.status().connected() {
+                return Ok(channel);
+            }
+        }
+
+        // Setup a new channel if needed
+        let channel = self.setup_channel().await?;
+        self.channel = Some(channel);
+        Ok(self.channel.as_ref().unwrap())
+    }
+
 
     pub async fn start<F, Fut>(&mut self, handler: F) -> Result<(), RpcError>
     where
@@ -471,14 +428,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let server_uri = rabbitmq_uri.clone();
     let inventory_clone = inventory.clone();
     tokio::spawn(async move {
-        let mut server = RpcServer::new(&server_uri, "inventory_requests")
-            .await
-            .unwrap();
+        let mut server = match RpcServer::new(&server_uri, "inventory_requests").await {
+            Ok(server) => server,
+            Err(e) => {
+                tracing::error!("Failed to create RPC server: {}", e);
+                return; // Exit the async task
+            }
+        };
 
-        server
+        if let Err(e) = server
             .start(move |request: InventoryRequest| {
                 let inventory = inventory_clone.clone();
                 async move {
+
                     // Simulate processing delay
                     tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -495,7 +457,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             })
             .await
-            .unwrap();
+        {
+            tracing::error!("Failed to start RPC server handler: {}", e);
+            return;
+        }
+
     });
 
     // Wait for the server to start
@@ -510,24 +476,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             product_id: product_id.to_string(),
         };
 
-        match client
-            .call::<_, InventoryResponse>("", "inventory_requests", &request)
-            .await
-        {
+        match client.call::<_, InventoryResponse>("", "inventory_requests", &request).await {
             Ok(response) => {
-                println!(
-                    "Product {} availability: {}",
-                    response.product_id,
-                    if response.available {
-                        "In stock"
-                    } else {
-                        "Out of stock"
-                    }
-                );
-                println!("Quantity: {}", response.quantity);
+                tracing::info!(
+            product_id = %response.product_id,
+            available = response.available,
+            quantity = response.quantity,
+            "Inventory check result"
+        );
             }
             Err(e) => {
-                println!("Failed to get inventory for {}: {}", product_id, e);
+                tracing::error!(
+            product_id = %product_id,
+            error = %e,
+            "Failed to get inventory"
+        );
             }
         }
     }

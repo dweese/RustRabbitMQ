@@ -25,6 +25,9 @@ pub enum RabbitError {
     #[error("RabbitMQ consume error: {0}")]
     ConsumeError(String),
 
+    #[error("RabbitMQ acknowledge error: {0}")]
+    AckError(String),
+
     #[error("Connection timeout: {0}")]
     TimeoutError(String),
 
@@ -32,10 +35,11 @@ pub enum RabbitError {
     Unknown(String),
 }
 
+
 // Custom Result type for RabbitMQ operations
 pub type Result<T> = std::result::Result<T, RabbitError>;
 
-// Convert Lapin errors to RabbitError
+// Converting from lapin errors
 impl From<LapinError> for RabbitError {
     fn from(error: LapinError) -> Self {
         // Use string representation for classification
@@ -49,11 +53,14 @@ impl From<LapinError> for RabbitError {
             RabbitError::PublishError(error_text)
         } else if error_text.contains("consume") {
             RabbitError::ConsumeError(error_text)
+        } else if error_text.contains("ack") || error_text.contains("nack") {
+            RabbitError::AckError(error_text)  // Add this condition
         } else {
             RabbitError::Unknown(error_text)
         }
     }
 }
+
 
 impl From<Elapsed> for RabbitError {
     fn from(_: Elapsed) -> Self {
@@ -80,6 +87,7 @@ impl From<std::env::VarError> for RabbitError {
     }
 }
 
+
 impl From<std::num::ParseIntError> for RabbitError {
     fn from(err: std::num::ParseIntError) -> Self {
         RabbitError::Unknown(format!("Parse error: {}", err))
@@ -92,6 +100,7 @@ impl From<Box<dyn StdError>> for RabbitError {
         RabbitError::Unknown(error.to_string())
     }
 }
+
 
 // Useful for converting general errors to RabbitError
 // impl<E> From<E> for RabbitError

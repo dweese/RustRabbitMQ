@@ -9,7 +9,8 @@ mod tokio_exec;
 mod batch_processor;
 mod channel_manager;
 mod amqp_client;
+pub mod errors;
 
 // Re-export specific items to simplify imports elsewhere
 pub use connection::ConnectionManager;
-pub use type_safe_mr::{Message, ProcessingContext};
+pub use type_safe_mr::Message;

@@ -18,24 +18,11 @@ use thiserror::Error;
 use tokio::sync::mpsc;
 use tracing::{error, info};
 use uuid::Uuid;
+use crate::common::errors::RabbitError;
+
 
 // Instead of:
 // use crate::common::connection::ConnectionManager;
-
-#[derive(Error, Debug)]
-pub enum RabbitError {
-    #[error("Failed to connect to RabbitMQ: {0}")]
-    ConnectionError(#[from] LapinError),
-
-    #[error("Failed to serialize/deserialize message: {0}")]
-    SerializationError(#[from] serde_json::Error),
-
-    #[error("Channel error: {0}")]
-    ChannelError(String),
-
-    #[error("Consumer error: {0}")]
-    ConsumerError(String),
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct PaymentMessage {
@@ -172,108 +159,84 @@ impl BatchConsumer {
         Ok(channel)
     }
 
-    pub async fn start_batch_processing<F>(&mut self, processor: F) -> Result<(), RabbitError>
+    pub async fn start_batch_processing<F, Fut>(&mut self, processor: F) -> Result<(), RabbitError>
     where
-        F: Fn(Vec<PaymentMessage>) -> Result<(), Box<dyn std::error::Error>>
-        + Send
-        + Sync
-        + 'static,
+        F: Fn(Vec<PaymentMessage>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), Box<dyn std::error::Error>>> + Send,
     {
-        // Get a channel
-        let channel = match self.channel.clone() {
-            Some(channel) => channel,
-            None => self.setup_channel().await?,
-        };
+        // Ensure we have a valid channel
+        if self.channel.is_none() {
+            self.channel = Some(self.setup_channel().await?);
+        }
 
-        // Set prefetch count to batch size to optimize throughput
-        channel
-            .basic_qos(self.batch_size as u16, BasicQosOptions::default())
-            .await
-            .map_err(|e| RabbitError::ChannelError(format!("Failed to set QoS: {}", e)))?;
+        let channel = self.channel.as_ref().unwrap();
 
-        // Create a consumer
-        let consumer = channel
-            .basic_consume(
-                &self.queue,
-                "batch_consumer",
-                BasicConsumeOptions::default(),
-                FieldTable::default(),
-            )
-            .await
-            .map_err(|e| RabbitError::ConsumerError(e.to_string()))?;
+        // Set up the consumer
+        let consumer = channel.basic_consume(
+            &self.queue,
+            "batch_consumer",
+            BasicConsumeOptions::default(),
+            FieldTable::default(),
+        ).await.map_err(|e| RabbitError::ConsumeError(e.to_string()))?;
 
-        info!("Started batch consumer for queue: {}", self.queue);
-
-        // Create channel for batch processing
-        let (tx, mut rx) = mpsc::channel::<(PaymentMessage, Delivery)>(self.batch_size * 2);
-
-        // Extract what we need from `self` before the spawn
+        // Set up batch collection
+        let mut messages = Vec::new();
         let batch_size = self.batch_size;
         let batch_timeout = self.batch_timeout;
 
-        // Spawn task to collect messages
-        let mut consumer_stream = consumer.into_stream();
+        // Process batches
+        let mut message_stream = consumer.into_stream();
 
-        // Spawn a task to receive messages from RabbitMQ and send them to our channel
-        tokio::spawn(async move {
-            // Implement this part: process the consumer_stream and send to tx
-            // This would typically look like:
-            // while let Some(delivery_result) = consumer_stream.next().await {
-            //     if let Ok(delivery) = delivery_result {
-            //         // Parse message and send to channel
-            //         if let Ok(message) = parse_message(&delivery) {
-            //             let _ = tx.send((message, delivery)).await;
-            //         }
-            //     }
-            // }
-        });
+        loop {
+            tokio::select! {
+            Some(delivery_result) = message_stream.next() => {
+                match delivery_result {
+                    Ok(delivery) => {
+                        match serde_json::from_slice::<PaymentMessage>(&delivery.data) {
+                            Ok(payment_message) => {
+                                messages.push(payment_message);
 
-        // Wrap processor in Arc for sharing across tasks
-        let processor = std::sync::Arc::new(processor);
+                                // Process batch if we've reached batch_size
+                                if messages.len() >= batch_size {
+                                    let batch = std::mem::take(&mut messages);
+                                    if let Err(e) = processor(batch).await {
+                                        // Handle processing error
+                                        log::error!("Batch processing error: {}", e);
+                                    }
+                                }
 
-        // Spawn the batch processing task
-        tokio::spawn(async move {
-            let mut batch = Vec::with_capacity(batch_size);
-            let mut deliveries = Vec::with_capacity(batch_size);
-
-            loop {
-                let timeout = tokio::time::sleep(batch_timeout);
-                tokio::pin!(timeout);
-
-                tokio::select! {
-                // Either we receive a message
-                result = rx.recv() => {
-                    match result {
-                        Some((message, delivery)) => {
-                            batch.push(message);
-                            deliveries.push(delivery);
-
-                            // Process batch if it reached the size limit
-                            if batch.len() >= batch_size {
-                                Self::process_batch(&batch, &deliveries, &processor).await;
-                                batch.clear();
-                                deliveries.clear();
+                                // Acknowledge the message
+                                if let Err(e) = delivery.ack(BasicAckOptions::default()).await {
+                                    return Err(RabbitError::AckError(e.to_string()));
+                                }
+                            },
+                            Err(e) => {
+                                log::error!("Message deserialization error: {}", e);
+                                // Consider whether to acknowledge, reject, or nack messages that can't be deserialized
+                                if let Err(e) = delivery.reject(BasicRejectOptions::default()).await {
+                                    log::error!("Failed to reject message: {}", e);
+                                }
                             }
-                        },
-                        None => break, // Channel closed
-                    }
-                }
-                // Or we hit the timeout
-                _ = &mut timeout => {
-                    if !batch.is_empty() {
-                        Self::process_batch(&batch, &deliveries, &processor).await;
-                        batch.clear();
-                        deliveries.clear();
+                        }
+                    },
+                    Err(e) => {
+                        log::error!("Error receiving message: {}", e);
                     }
                 }
             }
-            }
-        });
 
-        Ok(())
+            // Process any remaining messages after timeout
+            _ = tokio::time::sleep(batch_timeout) => {
+                if !messages.is_empty() {
+                    let batch = std::mem::take(&mut messages);
+                    if let Err(e) = processor(batch).await {
+                        log::error!("Batch processing error on timeout: {}", e);
+                    }
+                }
+            }
+        }
+        }
     }
-
-
     async fn process_batch<F>(
         batch: &[PaymentMessage],
         deliveries: &[Delivery],

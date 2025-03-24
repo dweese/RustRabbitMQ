@@ -1,20 +1,18 @@
 mod env;
-mod errors;
-mod message;
 mod rabbitmq_client;
-mod zero_copy_deser;
+
 pub mod common;
 mod models;
 mod messaging;
 mod processing;
+mod utils;
 
-
-use crate::errors::Result;
+use common::errors::Result;
 
 use lapin::{Connection, ConnectionProperties};
 
 use crate::{
-    message::{ErrorPayload, OrderCreatedPayload, RRMessage, RRMessagePayload, RRMessageType},
+    models::{ErrorPayload, OrderCreatedPayload, RRMessage, RRMessagePayload, RRMessageType},
     rabbitmq_client::RabbitMQClient,
 };
 use std::sync::Arc;

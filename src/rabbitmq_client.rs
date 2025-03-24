@@ -1,5 +1,5 @@
-use crate::errors::Result;
-use crate::message::{ErrorPayload, RRMessage, RRMessagePayload, RRMessageType};
+use crate::common::errors::Result;
+use crate::models::{ErrorPayload, RRMessage, RRMessagePayload, RRMessageType};
 
 use crate::env::Config;
 use futures_lite::StreamExt;

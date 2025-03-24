@@ -69,6 +69,15 @@ impl Publisher {
         Ok(())
     }
 
+    async fn ensure_channel(&mut self) -> Result<&Channel, PublishError> {
+        // First ensure we are connected
+        self.ensure_connected().await?;
+
+        // Safe to unwrap as ensure_connected guarantees a valid channel
+        Ok(self.channel.as_ref().unwrap())
+    }
+
+
     // This method doesn't return a reference, just ensures we have a working connection
     async fn ensure_connected(&mut self) -> Result<(), PublishError> {
         // Check if we already have a working channel

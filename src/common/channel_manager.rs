@@ -166,3 +166,131 @@ async fn example_usage() -> Result<(), anyhow::Error> {
 
     Ok(())
 }
+
+// Your new integrated example
+pub async fn integrated_example() -> Result<(), anyhow::Error> {
+    use lapin::options::{
+        BasicConsumeOptions, BasicPublishOptions, ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions,
+    };
+    use lapin::types::{AMQPValue, FieldTable};
+    use lapin::BasicProperties;
+    use std::time::Duration;
+    use tokio::time;
+    use uuid::Uuid;
+    use futures::StreamExt;
+    use log::{info, error};
+
+    // Setup connection with RabbitMQ
+    let config = ChannelConfig {
+        prefetch_count: 10,
+        confirm_mode: true,
+        id: "integrated-example".to_string(),
+    };
+
+    info!("Starting integrated RabbitMQ example");
+    let manager = ChannelManager::connect("amqp://guest:guest@localhost:5672", config).await?;
+
+    // Check channel health
+    if !manager.is_healthy()? {
+        error!("Channel is not healthy after connection");
+        return Err(anyhow::anyhow!("Failed to establish healthy channel"));
+    }
+
+    // Get a channel for declaring exchange and queue
+    let channel = manager.get_channel().await?;
+    let exchange_name = "example.exchange";
+    let queue_name = "example.queue";
+    let routing_key = "example.key";
+
+    // Declare exchange
+    channel.exchange_declare(
+        exchange_name,
+        lapin::ExchangeKind::Topic,
+        ExchangeDeclareOptions {
+            durable: true,
+            ..ExchangeDeclareOptions::default()
+        },
+        FieldTable::default(),
+    ).await?;
+
+    // Declare queue
+    let queue = channel.queue_declare(
+        queue_name,
+        QueueDeclareOptions {
+            durable: true,
+            ..QueueDeclareOptions::default()
+        },
+        FieldTable::default(),
+    ).await?;
+
+    info!("Declared queue {} with {} messages", queue_name, queue.message_count());
+
+    // Bind queue to exchange
+    channel.queue_bind(
+        queue_name,
+        exchange_name,
+        routing_key,
+        QueueBindOptions::default(),
+        FieldTable::default(),
+    ).await?;
+
+    // Setup consumer
+    let consumer_tag = format!("consumer-{}", Uuid::new_v4().to_string()[..8].to_string());
+    let mut consumer = channel.basic_consume(
+        queue_name,
+        &consumer_tag,
+        BasicConsumeOptions::default(),
+        FieldTable::default(),
+    ).await?;
+
+    // Start consumer task
+    let consumer_handle = tokio::spawn(async move {
+        info!("Consumer started. Waiting for messages...");
+        while let Some(delivery) = consumer.next().await {
+            if let Ok(delivery) = delivery {
+                let data = String::from_utf8_lossy(&delivery.data);
+                info!("Received message: {}", data);
+
+                // Acknowledge the message
+                delivery.ack(lapin::options::BasicAckOptions::default()).await
+                    .map_err(|e| error!("Failed to acknowledge message: {}", e))
+                    .ok();
+            }
+        }
+    });
+
+    // Get a new channel for publishing (to demonstrate channel reuse)
+    let publish_channel = manager.get_channel().await?;
+
+    // Publish a few messages
+    for i in 1..=5 {
+        let payload = format!("Hello from integrated example: message {}", i);
+
+        let mut headers = FieldTable::default();
+        headers.insert("message_id".into(), AMQPValue::LongString(format!("msg-{}", i).into()));
+
+        publish_channel.basic_publish(
+            exchange_name,
+            routing_key,
+            BasicPublishOptions::default(),
+            payload.as_bytes(),
+            BasicProperties::default()
+                .with_content_type("text/plain".into())
+                .with_headers(headers),
+        ).await?;
+
+
+
+        info!("Published message {}", i);
+        time::sleep(Duration::from_millis(500)).await;
+    }
+
+    // Wait a bit to allow messages to be processed
+    time::sleep(Duration::from_secs(2)).await;
+
+    // Cleanly terminate the example
+    info!("Example complete");
+    consumer_handle.abort(); // Stop the consumer task
+
+    Ok(())
+}
