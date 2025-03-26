@@ -5,7 +5,7 @@ use lapin::{
 };
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, };
 use uuid::Uuid;
 
 #[derive(Error, Debug)]

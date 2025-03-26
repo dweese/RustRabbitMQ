@@ -10,12 +10,11 @@ fn tokio_executor(future: Pin<Box<dyn Future<Output = ()> + Send>>) {
 
 use futures::TryStreamExt;
 use lapin::{
-    message::Delivery, options::*, types::FieldTable, BasicProperties, Channel, Error as LapinError,
+    message::Delivery, options::*, types::FieldTable, BasicProperties, Channel,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use thiserror::Error;
-use tokio::sync::mpsc;
+
 use tracing::{error, info};
 use uuid::Uuid;
 use crate::common::errors::RabbitError;

@@ -1,7 +1,7 @@
     use futures::stream::StreamExt;
     use lapin::{
         message::Delivery, options::*, types::FieldTable, BasicProperties, Channel,
-        Error as LapinError,
+
     }; // from futures
 
     use futures::TryStreamExt;
@@ -10,11 +10,10 @@
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
-    use thiserror::Error;
+
 
     use tracing::{error, info};
     use uuid::Uuid;
-    use crate::common::errors::RabbitError;
     use super::connection::ConnectionManager; // Access the ConnectionManager from connection.rs module
     use tokio::sync::oneshot::{self, Sender};
 
@@ -187,8 +186,10 @@
             // Wait for response with timeout
             let response_data = tokio::time::timeout(self.timeout, rx)
                 .await
-                .map_err(|_| RpcError::Timeout(self.timeout))?
-                .map_err(|_| RpcError::ResponseChannelClosed)??;
+                .map_err(|_| RpcError::Timeout(self.timeout))? // Handles the timeout Result
+                .map_err(|_| RpcError::ResponseChannelClosed)?; // Handles the oneshot channel Result
+
+
 
             // Deserialize and return
             let response: R = serde_json::from_slice(&response_data)
@@ -213,6 +214,10 @@
             Ok(())
         }
 
+        async fn ensure_channel(&mut self, exchange: &str) -> Result<(), RpcError> {
+            self.setup(exchange).await
+        }
+
     }
 
     // RPC Server to handle inventory requests
@@ -234,65 +239,76 @@
         }
 
         async fn setup(&mut self) -> Result<&Channel, RpcError> {
-            if let Some(channel) = &self.channel {
-                if channel.status().connected() {
-                    return Ok(channel);
-                }
-            }
-            let connection = self.connection_manager.get_connection().await
-                .map_err(|e| RpcError::ConnectionError(e.to_string()))?;
+            // Check if we need a new channel without early returns
+            let need_new_channel = match &self.channel {
+                Some(channel) if channel.status().connected() => false,
+                _ => true
+            };
 
-            let channel = connection
-                .create_channel()
-                .await
-                .map_err(|e| RpcError::ChannelError(e.to_string()))?;
+            // Create a new channel if needed
+            if need_new_channel {
+                // Get connection
+                let connection = self.connection_manager.get_connection().await
+                    .map_err(|e| RpcError::ConnectionError(e.to_string()))?;
 
-            // Declare queue
-            channel
-                .queue_declare(
-                    &self.queue,
-                    QueueDeclareOptions {
-                        durable: true,
-                        ..QueueDeclareOptions::default()
-                    },
-                    FieldTable::default(),
-                )
-                .await
-                .map_err(|e| RpcError::ChannelError(format!("Failed to declare queue: {}", e)))?;
+                // Create channel
+                let channel = connection.create_channel().await
+                    .map_err(|e| RpcError::ChannelError(format!("Failed to create channel: {}", e)))?;
 
-            self.channel = Some(channel);
-            Ok(self.channel.as_ref().unwrap())
-        }
+                // Declare queue before storing the channel
+                channel
+                    .queue_declare(
+                        &self.queue,
+                        QueueDeclareOptions {
+                            durable: true,
+                            ..QueueDeclareOptions::default()
+                        },
+                        FieldTable::default(),
+                    )
+                    .await
+                    .map_err(|e| RpcError::ChannelError(format!("Failed to declare queue: {}", e)))?;
 
-        // Add this helper method to your implementation
-        async fn ensure_channel(&mut self) -> Result<&Channel, RabbitError> {
-            if let Some(channel) = &self.channel {
-                if channel.status().connected() {
-                    return Ok(channel);
-                }
+                // Store the new channel
+                self.channel = Some(channel);
             }
 
-            // Setup a new channel if needed
-            let channel = self.setup_channel().await?;
-            self.channel = Some(channel);
-            Ok(self.channel.as_ref().unwrap())
+            // Now we can safely return a reference to self.channel, which is guaranteed to exist
+            match &self.channel {
+                Some(channel) => Ok(channel),
+                None => Err(RpcError::ChannelError("Channel creation failed".to_string()))
+            }
         }
 
+        // Simply replace ensure_channel with your existing setup method
+        async fn ensure_channel(&mut self) -> Result<&Channel, RpcError> {
+            self.setup().await
+        }
+
+        fn get_channel(&self) -> Result<&Channel, RpcError> {
+            match &self.channel {
+                Some(channel) => Ok(channel),
+                None => Err(RpcError::ChannelError("No channel available".to_string()))
+            }
+        }
 
         pub async fn start<F, Fut>(&mut self, handler: F) -> Result<(), RpcError>
         where
-            F: Fn(InventoryRequest) -> Fut + Send + Sync + 'static,
+            F: Fn(InventoryRequest) -> Fut + Send + Sync + 'static, // Removed Clone
             Fut: std::future::Future<Output = Result<InventoryResponse, RpcError>> + Send + 'static,
         {
+
             self.setup().await?;
             let channel = self.get_channel()?;
 
+            // Put handler in Arc before the loop
+            let handler = std::sync::Arc::new(handler);
 
             // Set prefetch count
             channel
                 .basic_qos(1, BasicQosOptions::default())
                 .await
                 .map_err(|e| RpcError::ChannelError(format!("Failed to set QoS: {}", e)))?;
+
 
             // Start consuming requests
             let consumer = channel
@@ -315,17 +331,16 @@
                 match delivery_result {
                     Ok(delivery) => {
                         let channel = channel_ref.clone();
+                        let handler = handler.clone(); // Cloning the Arc, not the handler itself
 
-                        // Process request in a separate task
                         tokio::spawn(async move {
-                            Self::process_request(channel, delivery, handler.clone()).await;
+                            Self::process_request(channel, delivery, handler).await;
                         });
                     }
                     Err(e) => {
                         error!("Error receiving request: {}", e);
 
-                        // Check if we need t
-                        // o reconnect
+                        // Check if we need to reconnect
                         if !channel.status().connected() {
                             warn!("Channel disconnected, attempting to reconnect");
                             break;
@@ -335,13 +350,20 @@
             }
 
             Ok(())
+
+
         }
 
-        async fn process_request<F, Fut>(channel: Channel, delivery: Delivery, handler: F)
+        async fn process_request<F, Fut>(
+            channel: Channel,
+            delivery: Delivery,
+            handler: Arc<F>,
+        ) -> Result<(), RpcError>
         where
-            F: Fn(InventoryRequest) -> Fut + Send + Sync,
-            Fut: std::future::Future<Output = Result<InventoryResponse, RpcError>> + Send,
+            F: Fn(InventoryRequest) -> Fut + Send + Sync + 'static,
+            Fut: std::future::Future<Output = Result<InventoryResponse, RpcError>> + Send + 'static,
         {
+
             // Extract reply_to and correlation_id
             let reply_to = match delivery.properties.reply_to() {
                 Some(reply_to) => reply_to.as_str(),

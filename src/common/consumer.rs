@@ -8,19 +8,46 @@ use tracing::{error, info, warn};
 
 use super::connection::ConnectionManager; // Access the ConnectionManager from connection.rs module
 
+// Additional From implementations as needed for your specific use case
+// For example, if you're using serde_json:
+impl From<serde_json::Error> for ConsumerError {
+    fn from(error: serde_json::Error) -> Self {
+        ConsumerError::SerializationError(error.to_string())
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum ConsumerError {
-    #[error("Failed to connect to RabbitMQ: {0}")]
-    ConnectionError(#[from] LapinError),
-
-    #[error("Failed to deserialize message: {0}")]
-    DeserializationError(#[from] serde_json::Error),
+    #[error("Connection error: {0}")]
+    ConnectionError(String),
 
     #[error("Channel error: {0}")]
     ChannelError(String),
 
     #[error("Consumer error: {0}")]
     ConsumerError(String),
+
+    #[error("Message processing error: {0}")]
+    ProcessingError(String),
+
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
+
+    #[error("Timeout error: {0}")]
+    TimeoutError(String),
+
+    #[error("Queue declaration error: {0}")]
+    QueueError(String),
+
+    #[error("Exchange declaration error: {0}")]
+    ExchangeError(String),
+
+    #[error("Unknown error: {0}")]
+    Unknown(String),
+
+    // Direct wrapper for LapinError
+    #[error("Lapin error: {0}")]
+    Lapin(#[from] LapinError),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -52,15 +79,10 @@ impl MessageConsumer {
     }
 
     async fn setup_channel(&mut self) -> Result<Channel, ConsumerError> {
-        if let Some(channel) = &self.channel {
-            if channel.status().connected() {
-                // Return a clone of the channel instead of a reference
-                return Ok(channel.clone());
-            }
-        }
-
-
+        // Get a connection
         let connection = self.connection_manager.get_connection().await?;
+
+        // Create a new channel
         let channel = connection
             .create_channel()
             .await
@@ -85,7 +107,6 @@ impl MessageConsumer {
         info!("About to declare queue: {}", self.queue);
 
         // Declare the queue
-        // Make sure this runs before attempting to consume
         let queue_declare_result = channel
             .queue_declare(
                 &self.queue,
@@ -99,9 +120,9 @@ impl MessageConsumer {
             .map_err(|e| ConsumerError::ChannelError(format!("Failed to declare queue: {}", e)))?;
 
         info!(
-            "Queue '{}' declared successfully: {:?}",
-            self.queue, queue_declare_result
-        );
+        "Queue '{}' declared successfully: {:?}",
+        self.queue, queue_declare_result
+    );
 
         // Bind the queue to the exchange
         channel
@@ -115,10 +136,10 @@ impl MessageConsumer {
             .await
             .map_err(|e| ConsumerError::ChannelError(format!("Failed to bind queue: {}", e)))?;
 
-        self.channel = Some(channel.clone());
-
+        // No longer storing the channel here - let the caller handle it
         Ok(channel)
     }
+
 
     pub async fn start_consuming<F>(&mut self, handler: F) -> Result<(), ConsumerError>
     where
