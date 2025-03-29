@@ -370,7 +370,8 @@
                 None => {
                     error!("Received RPC request without reply_to");
                     let _ = delivery.reject(BasicRejectOptions::default()).await;
-                    return;
+                    return Ok(());
+
                 }
             };
 
@@ -379,7 +380,8 @@
                 None => {
                     error!("Received RPC request without correlation_id");
                     let _ = delivery.reject(BasicRejectOptions::default()).await;
-                    return;
+                    return Ok(());
+
                 }
             };
 
@@ -389,7 +391,8 @@
                 Err(e) => {
                     error!("Failed to deserialize request: {}", e);
                     let _ = delivery.reject(BasicRejectOptions::default()).await;
-                    return;
+                    return Ok(());
+
                 }
             };
 
@@ -425,6 +428,8 @@
                                     response.product_id
                                 );
                                 let _ = delivery.ack(BasicAckOptions::default()).await;
+                                Ok(()) // Add this line to return the expected Result type
+
                             }
 
                             Err(e) => {
@@ -435,17 +440,23 @@
                                         ..BasicRejectOptions::default()
                                     })
                                     .await;
+                                Ok(()) // Add this line to return the expected Result type
+
                             }
                         }
                     }
                     Err(e) => {
                         error!("Failed to serialize response: {}", e);
                         let _ = delivery.reject(BasicRejectOptions::default()).await;
+                        Ok(()) // Add this line to return the expected Result type
+
                     }
                 },
                 Err(e) => {
                     error!("Error processing request: {}", e);
                     let _ = delivery.reject(BasicRejectOptions::default()).await;
+                    Ok(()) // Add this line to return the expected Result type
+
                 }
             }
         }

@@ -12,6 +12,27 @@ pub struct ConnectionManager {
 }
 
 impl ConnectionManager {
+    // The config isn't present .
+    pub async fn create_channel(
+        &self,
+    ) -> Result<lapin::Channel, crate::common::errors::RabbitError> {
+        // Get the connection from the Option
+        let connection = self.connection.as_ref().ok_or_else(|| {
+            crate::common::errors::RabbitError::ConnectionError("No active connection".to_string())
+        })?;
+
+        // Create a new channel using the connection
+        let channel = connection
+            .create_channel()
+            .await
+            .map_err(|e| crate::common::errors::RabbitError::ChannelError(e.to_string()))?;
+
+        // Return the channel
+        Ok(channel)
+    }
+}
+
+impl ConnectionManager {
     pub fn new(uri: &str) -> Self {
         ConnectionManager {
             uri: uri.to_string(),
@@ -29,12 +50,15 @@ impl ConnectionManager {
     }
 
     pub async fn get_connection(&mut self) -> Result<&Connection, LapinError> {
-        if self.connection.as_ref().map_or(false, |conn| conn.status().connected()) {
+        if self
+            .connection
+            .as_ref()
+            .map_or(false, |conn| conn.status().connected())
+        {
             return Ok(self.connection.as_ref().unwrap());
         }
         self.establish_connection().await
     }
-
 
     async fn establish_connection(&mut self) -> Result<&Connection, LapinError> {
         self.reconnect_attempts = 0;
@@ -43,12 +67,7 @@ impl ConnectionManager {
         loop {
             info!("Attempting to connect to RabbitMQ at {}", self.uri);
 
-            match Connection::connect(
-                &self.uri,
-                ConnectionProperties::default(),
-            )
-                .await
-            {
+            match Connection::connect(&self.uri, ConnectionProperties::default()).await {
                 Ok(conn) => {
                     info!("Successfully connected to RabbitMQ");
                     self.connection = Some(conn);
@@ -100,9 +119,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a common manager
     let mut manager = ConnectionManager::new(
         &std::env::var("RABBITMQ_URI")
-            .unwrap_or_else(|_| "amqp://guest:guest@localhost:5672/%2f".to_string())
+            .unwrap_or_else(|_| "amqp://guest:guest@localhost:5672/%2f".to_string()),
     )
-        .with_reconnect_policy(5, 2000); // 5 attempts with 2 second initial delay
+    .with_reconnect_policy(5, 2000); // 5 attempts with 2 second initial delay
 
     // Get a common
     let connection = manager.get_connection().await?;
@@ -121,7 +140,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
 
-    info!("Queue '{}' declared with {:?} messages", "test_queue", queue.message_count());
+    info!(
+        "Queue '{}' declared with {:?} messages",
+        "test_queue",
+        queue.message_count()
+    );
 
     // Keep the common alive until interrupted
     info!("Service running. Press Ctrl+C to exit.");

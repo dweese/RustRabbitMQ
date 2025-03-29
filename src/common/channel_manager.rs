@@ -1,6 +1,5 @@
 use anyhow::Result;
 use lapin::{
-    options::{BasicQosOptions, ConfirmSelectOptions},
     Channel, ConnectionProperties,
 };
 use std::sync::{Arc, Mutex};
@@ -102,31 +101,6 @@ impl ChannelManager {
             .map(|ch| ch.clone())
             .ok_or(ChannelError::ChannelNotAvailable)
     }
-
-    async fn create_channel(&self, guard: &mut std::sync::MutexGuard<'_, Option<Channel>>) -> Result<(), ChannelError> {
-        let channel = self.connection.create_channel().await?;
-
-        // Configure QoS if specified
-        if self.config.prefetch_count > 0 {
-            debug!("Setting channel QoS to {}", self.config.prefetch_count);
-            channel.basic_qos(self.config.prefetch_count, BasicQosOptions::default())
-                .await
-                .map_err(|e| ChannelError::ConfigurationFailed(format!("Failed to set QoS: {}", e)))?;
-        }
-
-        // Enable confirm mode if specified
-        if self.config.confirm_mode {
-            debug!("Enabling confirm mode for channel {}", self.config.id);
-            channel.confirm_select(ConfirmSelectOptions::default())
-                .await
-                .map_err(|e| ChannelError::ConfigurationFailed(format!("Failed to enable confirm mode: {}", e)))?;
-        }
-
-        info!("Channel {} created and configured successfully", self.config.id);
-        **guard = Some(channel);  // This should be *guard since we have a &mut MutexGuard
-        Ok(())
-    }
-
 
     /// Check if the channel is in a healthy state
     pub fn is_healthy(&self) -> Result<bool, ChannelError> {

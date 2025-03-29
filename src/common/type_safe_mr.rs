@@ -1,23 +1,20 @@
 // For examples/advanced_patterns.rs
 
-use anyhow::Result;
 use crate::common::ConnectionManager;
+use anyhow::Result;
+use std::sync::Arc;
 
 use async_trait::async_trait;
+use futures_lite::StreamExt;
 use lapin::{
     options::{BasicAckOptions, BasicConsumeOptions, BasicPublishOptions},
     protocol::basic::AMQPProperties,
     Channel,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    marker::PhantomData,
-};
-use futures_lite::StreamExt;
-use tracing::{ error, info, instrument, warn};
+use std::{collections::HashMap, marker::PhantomData};
+use tracing::{error, info, instrument, warn};
 use uuid::Uuid;
-
 
 // 1. Message Trait for Type-Safe Message Handling
 // This uses associated types to enforce type relationships
@@ -57,7 +54,10 @@ impl Message for OrderCreated {
 
     async fn process(self, ctx: ProcessingContext) -> Result<Self::Response> {
         // Simulate some processing
-        info!("Processing order {} for customer {}", self.order_id, self.customer_id);
+        info!(
+            "Processing order {} for customer {}",
+            self.order_id, self.customer_id
+        );
 
         // Example: Access a database client from the context
         if let Some(db_client) = ctx.get_resource::<DbClient>() {
@@ -111,11 +111,10 @@ impl DbClient {
     }
 }
 
-// 3. Registry of Message Handlers with Type Erasure Pattern
 struct MessageRouter {
     connection_manager: ConnectionManager,
     channel: Option<Channel>,
-    handlers: HashMap<String, Box<dyn MessageHandler + Send + Sync>>,
+    handlers: HashMap<String, Arc<dyn MessageHandler + Send + Sync>>,
     context: ProcessingContext,
 }
 
@@ -166,26 +165,15 @@ impl MessageRouter {
 
     // Register a handler for a specific message type
     pub fn register_handler<M: Message>(&mut self) -> &mut Self {
-        let routing_key = M::routing_key().to_string();
-        self.handlers.insert(
-            routing_key,
-            Box::new(MessageHandlerImpl::<M>::new()),
-        );
+        let handler = MessageHandlerImpl::<M>::new();
+        self.handlers
+            .insert(M::routing_key().to_string(), Arc::new(handler));
         self
-    }
-
-    async fn setup(&mut self) -> Result<&Channel> {
-        if self.channel.is_none() {
-            let channel = self.connection_manager.get_connection().await?
-                .create_channel().await?;
-            self.channel = Some(channel);
-        }
-        Ok(self.channel.as_ref().unwrap())
     }
 
     #[instrument(skip(self))]
     pub async fn start(&mut self, exchange: &str, queue: &str) -> Result<()> {
-        let channel = self.setup().await?;
+        let channel = self.connection_manager.create_channel().await?;
 
         // Declare exchange and queue
         channel
@@ -250,8 +238,11 @@ impl MessageRouter {
                                         if let Some(reply_to) = delivery.properties.reply_to() {
                                             // Send response if reply_to is specified
                                             let mut props = AMQPProperties::default();
-                                            if let Some(correlation_id) = delivery.properties.correlation_id() {
-                                                props = props.with_correlation_id(correlation_id.clone());
+                                            if let Some(correlation_id) =
+                                                delivery.properties.correlation_id()
+                                            {
+                                                props = props
+                                                    .with_correlation_id(correlation_id.clone());
                                             }
 
                                             if let Err(e) = channel
@@ -276,10 +267,7 @@ impl MessageRouter {
                         }
 
                         // Acknowledge the message was processed
-                        if let Err(e) = delivery
-                            .ack(BasicAckOptions::default())
-                            .await
-                        {
+                        if let Err(e) = delivery.ack(BasicAckOptions::default()).await {
                             error!("Failed to acknowledge message: {}", e);
                         }
                     }
