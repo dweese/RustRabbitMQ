@@ -333,7 +333,7 @@ impl BatchConsumer {
 
         // Start batch processing
         batch_consumer
-            .start_batch_processing(|batch: Vec<PaymentMessage>| {
+            .start_batch_processing(|batch: Vec<PaymentMessage>| async move {
                 println!("Processing batch of {} payments", batch.len());
 
                 // Simulate batch processing

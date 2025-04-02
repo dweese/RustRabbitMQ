@@ -1,3 +1,5 @@
+// src/rabbitmq/errors.rs
+
 use lapin::Error as LapinError;
 
 use serde_json::Error as SerdeError;
@@ -6,7 +8,7 @@ use thiserror::Error;
 use tokio::time::error::Elapsed;
 
 #[derive(Debug, Error)]
-pub enum RabbitError {
+pub enum RabbitMQError {
     #[error("RabbitMQ common error: {0}")]
     ConnectionError(String),
 
@@ -37,79 +39,67 @@ pub enum RabbitError {
 
 
 // Custom Result type for RabbitMQ operations
-pub type Result<T> = std::result::Result<T, RabbitError>;
+pub type Result<T> = std::result::Result<T, RabbitMQError>;
 
 // Converting from lapin errors
-impl From<LapinError> for RabbitError {
+impl From<LapinError> for RabbitMQError {
     fn from(error: LapinError) -> Self {
         // Use string representation for classification
         let error_text = error.to_string();
 
         if error_text.contains("common") {
-            RabbitError::ConnectionError(error_text)
+            RabbitMQError::ConnectionError(error_text)
         } else if error_text.contains("channel") {
-            RabbitError::ChannelError(error_text)
+            RabbitMQError::ChannelError(error_text)
         } else if error_text.contains("publish") {
-            RabbitError::PublishError(error_text)
+            RabbitMQError::PublishError(error_text)
         } else if error_text.contains("consume") {
-            RabbitError::ConsumeError(error_text)
+            RabbitMQError::ConsumeError(error_text)
         } else if error_text.contains("ack") || error_text.contains("nack") {
-            RabbitError::AckError(error_text)  // Add this condition
+            RabbitMQError::AckError(error_text)  // Add this condition
         } else {
-            RabbitError::Unknown(error_text)
+            RabbitMQError::Unknown(error_text)
         }
     }
 }
 
 
-impl From<Elapsed> for RabbitError {
+impl From<Elapsed> for RabbitMQError {
     fn from(_: Elapsed) -> Self {
-        RabbitError::TimeoutError("Connection timed out".to_string())
+        RabbitMQError::TimeoutError("Connection timed out".to_string())
     }
 }
 
-impl From<String> for RabbitError {
+impl From<String> for RabbitMQError {
     fn from(message: String) -> Self {
-        RabbitError::Unknown(message)
+        RabbitMQError::Unknown(message)
     }
 }
 
-impl From<&str> for RabbitError {
+impl From<&str> for RabbitMQError {
     fn from(message: &str) -> Self {
-        RabbitError::Unknown(message.to_string())
+        RabbitMQError::Unknown(message.to_string())
     }
 }
 
 // Add specific implementations for std errors:
-impl From<std::env::VarError> for RabbitError {
+impl From<std::env::VarError> for RabbitMQError {
     fn from(err: std::env::VarError) -> Self {
-        RabbitError::Unknown(format!("Environment variable error: {}", err))
+        RabbitMQError::Unknown(format!("Environment variable error: {}", err))
     }
 }
 
 
-impl From<std::num::ParseIntError> for RabbitError {
+impl From<std::num::ParseIntError> for RabbitMQError {
     fn from(err: std::num::ParseIntError) -> Self {
-        RabbitError::Unknown(format!("Parse error: {}", err))
+        RabbitMQError::Unknown(format!("Parse error: {}", err))
     }
 }
 
 // This allows converting any boxed error into RabbitError
-impl From<Box<dyn StdError>> for RabbitError {
+impl From<Box<dyn StdError>> for RabbitMQError {
     fn from(error: Box<dyn StdError>) -> Self {
-        RabbitError::Unknown(error.to_string())
+        RabbitMQError::Unknown(error.to_string())
     }
 }
 
-
-// Useful for converting general errors to RabbitError
-// impl<E> From<E> for RabbitError
-// where
-//     E: std::error::Error + Send + Sync + 'static,
-//     Self: Sized,
-//     E: !Into<RabbitError>, // Prevent implementing `From<RabbitError>` for `RabbitError`
-// {
-//     fn from(error: E) -> Self {
-//         RabbitError::Unknown(error.to_string())
-//     }
-// }

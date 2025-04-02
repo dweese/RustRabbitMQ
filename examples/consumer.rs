@@ -143,7 +143,8 @@ impl MessageConsumer {
 
     pub async fn start_consuming<F>(&mut self, handler: F) -> Result<(), ConsumerError>
     where
-        F: Fn(OrderMessage) -> Result<(), Box<dyn std::error::Error>> + Send + Sync + 'static,
+        F: Fn(OrderMessage) -> Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync + 'static,
+
     {
         let channel = self.setup_channel().await?;
         let consumer = channel
