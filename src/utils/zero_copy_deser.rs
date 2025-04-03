@@ -1,5 +1,5 @@
 // Another advanced example for advanced_patterns.rs
-
+#![allow(dead_code)]
 use anyhow::Result;
 use futures::StreamExt;
 use lapin::{
@@ -24,7 +24,7 @@ use tokio::{
 use tracing::{ error, info, instrument };
 use uuid::Uuid;
 
-use crate::common::ConnectionManager;
+use crate::rabbitmq::ConnectionManager;
 
 // 1. Zero-copy deserialization with lifetimes
 // This allows us to process messages without allocating a new string for each field
@@ -282,7 +282,7 @@ async fn main() -> Result<()> {
         // Example processing logic - only allocate if needed
         if message.priority > 5 {
             // For high priority messages, we might need to convert to owned
-            let owned_message: OwnedMessage = message.into();
+            let _owned_message: OwnedMessage = message.into();
             // ... do something with owned_message that requires ownership
         } else {
             // For low priority messages, work with borrowed data

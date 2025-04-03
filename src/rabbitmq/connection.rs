@@ -1,4 +1,4 @@
-use lapin::{options::*, types::FieldTable, Connection, ConnectionProperties, Error as LapinError};
+use lapin::{Connection, ConnectionProperties, Error as LapinError};
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{error, info};
@@ -108,50 +108,4 @@ impl ConnectionManager {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Setup tracing for logging
-    tracing_subscriber::fmt::init();
 
-    // Load environment variables from .env file if present
-    dotenv::dotenv().ok();
-
-    // Create a common manager
-    let mut manager = ConnectionManager::new(
-        &std::env::var("RABBITMQ_URI")
-            .unwrap_or_else(|_| "amqp://guest:guest@localhost:5672/%2f".to_string()),
-    )
-    .with_reconnect_policy(5, 2000); // 5 attempts with 2 second initial delay
-
-    // Get a common
-    let connection = manager.get_connection().await?;
-
-    // Create a channel
-    let channel = connection.create_channel().await?;
-
-    info!("Connected to RabbitMQ successfully");
-
-    // Declare a queue for testing
-    let queue = channel
-        .queue_declare(
-            "test_queue",
-            QueueDeclareOptions::default(),
-            FieldTable::default(),
-        )
-        .await?;
-
-    info!(
-        "Queue '{}' declared with {:?} messages",
-        "test_queue",
-        queue.message_count()
-    );
-
-    // Keep the common alive until interrupted
-    info!("Service running. Press Ctrl+C to exit.");
-    tokio::signal::ctrl_c().await?;
-
-    info!("Closing common...");
-    manager.close().await?;
-
-    Ok(())
-}

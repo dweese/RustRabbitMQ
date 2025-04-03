@@ -1,7 +1,8 @@
 // For examples/advanced_patterns.rs
-
-use crate::common::ConnectionManager;
+#![allow(dead_code)]
+use crate::rabbitmq::ConnectionManager;
 use anyhow::Result;
+use std::any::{Any, TypeId};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -73,7 +74,7 @@ impl Message for OrderCreated {
 
 // 2. Processing Context with Type-Erased Resource Management
 pub struct ProcessingContext {
-    resources: HashMap<std::any::TypeId, Box<dyn std::any::Any + Send + Sync>>,
+    resources: HashMap<TypeId, Arc<dyn Any + Send + Sync>>,
 }
 
 impl ProcessingContext {
@@ -85,15 +86,15 @@ impl ProcessingContext {
 
     pub fn add_resource<T: 'static + Send + Sync>(&mut self, resource: T) {
         self.resources.insert(
-            std::any::TypeId::of::<T>(),
-            Box::new(resource) as Box<dyn std::any::Any + Send + Sync>,
+            TypeId::of::<T>(),
+            Arc::new(resource) as Arc<dyn Any + Send + Sync>,
         );
     }
 
     pub fn get_resource<T: 'static + Send + Sync>(&self) -> Option<&T> {
         self.resources
-            .get(&std::any::TypeId::of::<T>())
-            .and_then(|boxed| boxed.downcast_ref::<T>())
+            .get(&TypeId::of::<T>())
+            .and_then(|arc| arc.downcast_ref::<T>())
     }
 }
 
@@ -231,7 +232,8 @@ impl MessageRouter {
             while let Some(delivery) = consumer.next().await {
                 match delivery {
                     Ok(delivery) => {
-                        if let Some(routing_key) = delivery.routing_key.as_str() {
+                        let routing_key = delivery.routing_key.as_str();
+                        {
                             if let Some(handler) = handlers.get(routing_key) {
                                 match handler.handle(&delivery.data, &ctx).await {
                                     Ok(response) => {

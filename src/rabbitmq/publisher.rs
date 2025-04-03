@@ -6,6 +6,7 @@ use lapin::{
 use serde::Serialize;
 use thiserror::Error;
 
+#[allow(dead_code)]
 #[derive(Error, Debug)]
 pub enum PublishError {
     #[error("Connection error: {0}")]
@@ -24,6 +25,7 @@ pub enum PublishError {
     SerializationError(#[from] serde_json::Error),
 }
 
+#[allow(dead_code)]
 pub struct Publisher {
     amqp_uri: String,
     exchange: String,
@@ -31,6 +33,7 @@ pub struct Publisher {
     channel: Option<Channel>,
 }
 
+#[allow(dead_code)]
 impl Publisher {
     pub async fn new(amqp_uri: &str, exchange: &str) -> Result<Self, PublishError> {
         Ok(Self {

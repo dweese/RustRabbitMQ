@@ -1,4 +1,5 @@
 // src/messaging/error.rs
+#![allow(dead_code)]
 use thiserror::Error;
 use lapin::Error as LapinError;
 use std::time::Duration;

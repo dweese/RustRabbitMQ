@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use anyhow::Result;
 use lapin::{
     Channel, ConnectionProperties,
@@ -84,7 +85,7 @@ impl ChannelManager {
     /// Get a channel, creating one if needed
     /// Returns a cloned Channel that can be used independently
     pub async fn get_channel(&self) -> Result<Channel, ChannelError> {
-        let mut guard = self.channel.lock().map_err(|_| ChannelError::LockError)?;
+        let guard = self.channel.lock().map_err(|_| ChannelError::LockError)?;
 
         // Check if we need to create a new channel
         let needs_new_channel = match &*guard {
@@ -94,7 +95,8 @@ impl ChannelManager {
 
         if needs_new_channel {
             debug!(channel_id = %self.config.id, "Creating new channel");
-            self.create_channel(&mut guard).await?;
+            self.connection.create_channel().await?;
+
         }
 
         guard.as_ref()
@@ -119,6 +121,7 @@ impl ChannelManager {
 }
 
 // Usage example
+
 async fn example_usage() -> Result<(), anyhow::Error> {
     let config = ChannelConfig {
         prefetch_count: 50,

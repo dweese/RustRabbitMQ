@@ -1,6 +1,7 @@
 // For examples/advanced_patterns.rs
+#![allow(dead_code)]
 
-use crate::common::ConnectionManager;
+use crate::rabbitmq::ConnectionManager;
 use anyhow::Result;
 use std::sync::Arc;
 use std::any::{Any, TypeId};

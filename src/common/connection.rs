@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use lapin::{options::*, types::FieldTable, Connection, ConnectionProperties, Error as LapinError};
 use std::time::Duration;
 use tokio::time::sleep;
@@ -15,17 +16,17 @@ impl ConnectionManager {
     // The config isn't present .
     pub async fn create_channel(
         &self,
-    ) -> Result<lapin::Channel, crate::common::errors::RabbitError> {
+    ) -> Result<lapin::Channel, crate::rabbitmq::errors::RabbitMQError> {
         // Get the connection from the Option
         let connection = self.connection.as_ref().ok_or_else(|| {
-            crate::common::errors::RabbitError::ConnectionError("No active connection".to_string())
+            crate::rabbitmq::errors::RabbitMQError::ConnectionError("No active connection".to_string())
         })?;
 
         // Create a new channel using the connection
         let channel = connection
             .create_channel()
             .await
-            .map_err(|e| crate::common::errors::RabbitError::ChannelError(e.to_string()))?;
+            .map_err(|e| crate::rabbitmq::errors::RabbitMQError::ChannelError(e.to_string()))?;
 
         // Return the channel
         Ok(channel)

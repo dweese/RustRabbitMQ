@@ -1,16 +1,10 @@
-// Export each example module
-pub mod advanced_patterns;
+// src/common/mod.rs - Module declarations only
+pub mod amqp_client;
+pub mod batch_processor;
+pub mod channel_manager;
 pub mod connection;
-pub mod consumer;
-pub mod publisher;
-pub mod request_response;
-pub mod type_safe_mr;
-mod tokio_exec;
-mod batch_processor;
-mod channel_manager;
-mod amqp_client;
 pub mod errors;
-
-// Re-export specific items to simplify imports elsewhere
-pub use connection::ConnectionManager;
-pub use type_safe_mr::Message;
+pub mod publisher;
+pub mod tokio_exec;
+pub mod type_safe_mr;
+mod request_response;

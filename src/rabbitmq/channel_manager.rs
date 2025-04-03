@@ -1,10 +1,9 @@
+#![allow(dead_code)]
 use anyhow::Result;
-use lapin::{
-    Channel, ConnectionProperties,
-};
+use lapin::{Channel, ConnectionProperties};
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
-use tracing::{debug, error, info, };
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 #[derive(Error, Debug)]
@@ -72,10 +71,7 @@ impl ChannelManager {
     /// Create a new ChannelManager by establishing a connection
     pub async fn connect(uri: &str, config: ChannelConfig) -> Result<Self, ChannelError> {
         info!(channel_id = %config.id, "Connecting to RabbitMQ at {}", uri);
-        let connection = lapin::Connection::connect(
-            uri,
-            ConnectionProperties::default(),
-        ).await?;
+        let connection = lapin::Connection::connect(uri, ConnectionProperties::default()).await?;
 
         debug!("Successfully connected to RabbitMQ");
         Ok(Self::new(Arc::new(connection), config))
@@ -95,10 +91,10 @@ impl ChannelManager {
         if needs_new_channel {
             debug!(channel_id = %self.config.id, "Creating new channel");
             self.connection.create_channel().await?;
-
         }
 
-        guard.as_ref()
+        guard
+            .as_ref()
             .map(|ch| ch.clone())
             .ok_or(ChannelError::ChannelNotAvailable)
     }
@@ -133,27 +129,30 @@ async fn example_usage() -> Result<(), anyhow::Error> {
     let channel = manager.get_channel().await?;
 
     // Use the channel for RabbitMQ operations
-    let _queue = channel.queue_declare(
-        "hello",
-        lapin::options::QueueDeclareOptions::default(),
-        lapin::types::FieldTable::default(),
-    ).await?;
+    let _queue = channel
+        .queue_declare(
+            "hello",
+            lapin::options::QueueDeclareOptions::default(),
+            lapin::types::FieldTable::default(),
+        )
+        .await?;
 
     Ok(())
 }
 
 // Your new integrated example
 pub async fn integrated_example() -> Result<(), anyhow::Error> {
+    use futures::StreamExt;
     use lapin::options::{
-        BasicConsumeOptions, BasicPublishOptions, ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions,
+        BasicConsumeOptions, BasicPublishOptions, ExchangeDeclareOptions, QueueBindOptions,
+        QueueDeclareOptions,
     };
     use lapin::types::{AMQPValue, FieldTable};
     use lapin::BasicProperties;
+    use log::{error, info};
     use std::time::Duration;
     use tokio::time;
     use uuid::Uuid;
-    use futures::StreamExt;
-    use log::{info, error};
 
     // Setup connection with RabbitMQ
     let config = ChannelConfig {
@@ -178,45 +177,57 @@ pub async fn integrated_example() -> Result<(), anyhow::Error> {
     let routing_key = "example.key";
 
     // Declare exchange
-    channel.exchange_declare(
-        exchange_name,
-        lapin::ExchangeKind::Topic,
-        ExchangeDeclareOptions {
-            durable: true,
-            ..ExchangeDeclareOptions::default()
-        },
-        FieldTable::default(),
-    ).await?;
+    channel
+        .exchange_declare(
+            exchange_name,
+            lapin::ExchangeKind::Topic,
+            ExchangeDeclareOptions {
+                durable: true,
+                ..ExchangeDeclareOptions::default()
+            },
+            FieldTable::default(),
+        )
+        .await?;
 
     // Declare queue
-    let queue = channel.queue_declare(
-        queue_name,
-        QueueDeclareOptions {
-            durable: true,
-            ..QueueDeclareOptions::default()
-        },
-        FieldTable::default(),
-    ).await?;
+    let queue = channel
+        .queue_declare(
+            queue_name,
+            QueueDeclareOptions {
+                durable: true,
+                ..QueueDeclareOptions::default()
+            },
+            FieldTable::default(),
+        )
+        .await?;
 
-    info!("Declared queue {} with {} messages", queue_name, queue.message_count());
+    info!(
+        "Declared queue {} with {} messages",
+        queue_name,
+        queue.message_count()
+    );
 
     // Bind queue to exchange
-    channel.queue_bind(
-        queue_name,
-        exchange_name,
-        routing_key,
-        QueueBindOptions::default(),
-        FieldTable::default(),
-    ).await?;
+    channel
+        .queue_bind(
+            queue_name,
+            exchange_name,
+            routing_key,
+            QueueBindOptions::default(),
+            FieldTable::default(),
+        )
+        .await?;
 
     // Setup consumer
     let consumer_tag = format!("consumer-{}", Uuid::new_v4().to_string()[..8].to_string());
-    let mut consumer = channel.basic_consume(
-        queue_name,
-        &consumer_tag,
-        BasicConsumeOptions::default(),
-        FieldTable::default(),
-    ).await?;
+    let mut consumer = channel
+        .basic_consume(
+            queue_name,
+            &consumer_tag,
+            BasicConsumeOptions::default(),
+            FieldTable::default(),
+        )
+        .await?;
 
     // Start consumer task
     let consumer_handle = tokio::spawn(async move {
@@ -227,7 +238,9 @@ pub async fn integrated_example() -> Result<(), anyhow::Error> {
                 info!("Received message: {}", data);
 
                 // Acknowledge the message
-                delivery.ack(lapin::options::BasicAckOptions::default()).await
+                delivery
+                    .ack(lapin::options::BasicAckOptions::default())
+                    .await
                     .map_err(|e| error!("Failed to acknowledge message: {}", e))
                     .ok();
             }
@@ -242,19 +255,22 @@ pub async fn integrated_example() -> Result<(), anyhow::Error> {
         let payload = format!("Hello from integrated example: message {}", i);
 
         let mut headers = FieldTable::default();
-        headers.insert("message_id".into(), AMQPValue::LongString(format!("msg-{}", i).into()));
+        headers.insert(
+            "message_id".into(),
+            AMQPValue::LongString(format!("msg-{}", i).into()),
+        );
 
-        publish_channel.basic_publish(
-            exchange_name,
-            routing_key,
-            BasicPublishOptions::default(),
-            payload.as_bytes(),
-            BasicProperties::default()
-                .with_content_type("text/plain".into())
-                .with_headers(headers),
-        ).await?;
-
-
+        publish_channel
+            .basic_publish(
+                exchange_name,
+                routing_key,
+                BasicPublishOptions::default(),
+                payload.as_bytes(),
+                BasicProperties::default()
+                    .with_content_type("text/plain".into())
+                    .with_headers(headers),
+            )
+            .await?;
 
         info!("Published message {}", i);
         time::sleep(Duration::from_millis(500)).await;

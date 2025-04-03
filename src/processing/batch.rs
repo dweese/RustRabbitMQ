@@ -1,4 +1,5 @@
 // src/processing/batch.rs
+#![allow(dead_code)]
 use std::error::Error;
 
 use std::marker::PhantomData;

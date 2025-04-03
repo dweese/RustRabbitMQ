@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::pin::Pin;
 use std::future::Future;
 use lapin::ConnectionProperties;
