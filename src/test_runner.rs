@@ -145,6 +145,7 @@ fn test_rabbitmq_config() -> Result<()> {
     Ok(())
 }
 
+
 async fn test_rabbitmq_connection() -> Result<()> {
     info!("Testing RabbitMQ connection...");
 
@@ -155,12 +156,15 @@ async fn test_rabbitmq_connection() -> Result<()> {
 
     let amqp_addr = format!(
         "amqp://{}:{}@{}:{}/{}",
-        rabbit_config.username,
-        rabbit_config.password,
-        rabbit_config.host,
-        rabbit_config.port,
-        rabbit_config.vhost.unwrap_or_default()
+        "dweese", //bit_config.connection.username,
+        "pw", // password,
+        "localhost", //connection.host,
+        "1234",  //connection.port,
+        "vhost",
+
+        // rabbit_config.vhost.unwrap_or_default()
     );
+
 
     // Try to connect with a timeout
     let connection_timeout = Duration::from_secs(5);

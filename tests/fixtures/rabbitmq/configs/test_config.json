@@ -1,0 +1,34 @@
+{
+  "rabbitmq": {
+    "connection": {
+      "host": "localhost",
+      "port": 5672,
+      "username": "guest",
+      "password": "guest",
+      "vhost": "/"
+    },
+    "exchanges": [
+      {
+        "name": "test.exchange",
+        "type": "direct",
+        "durable": true,
+        "auto_delete": false
+      }
+    ],
+    "queues": [
+      {
+        "name": "test.queue",
+        "durable": true,
+        "exclusive": false,
+        "auto_delete": false
+      }
+    ],
+    "bindings": [
+      {
+        "exchange": "test.exchange",
+        "queue": "test.queue",
+        "routing_key": "test.key"
+      }
+    ]
+  }
+}
