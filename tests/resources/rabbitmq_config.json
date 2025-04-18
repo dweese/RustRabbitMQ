@@ -1,0 +1,103 @@
+{
+  "connection": {
+    "host": "localhost",
+    "port": 5672,
+    "vhost": "/",
+    "username": "guest",
+    "password": "guest",
+    "connection_timeout_ms": 30000,
+    "heartbeat_interval_sec": 60,
+    "connection_name": "rust-rabbitmq-client",
+    "use_tls": false,
+    "tls_options": {
+      "verify_hostname": true,
+      "ca_cert_path": "/path/to/ca_certificate.pem",
+      "client_cert_path": null,
+      "client_key_path": null
+    }
+  },
+  "channels": {
+    "default_prefetch_count": 10,
+    "default_prefetch_size": 0,
+    "confirm_deliveries": true
+  },
+  "exchanges": [
+    {
+      "name": "my_exchange",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {
+        "alternate-exchange": "fallback_exchange"
+      }
+    }
+  ],
+  "queues": [
+    {
+      "name": "my_queue",
+      "durable": true,
+      "exclusive": false,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 86400000,
+        "x-dead-letter-exchange": "dead_letter_exchange",
+        "x-max-length": 10000,
+        "x-queue-mode": "lazy"
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "exchange": "my_exchange",
+      "queue": "my_queue",
+      "routing_key": "my_routing_key",
+      "arguments": {}
+    }
+  ],
+  "consumers": [
+    {
+      "queue": "my_queue",
+      "consumer_tag": "my_consumer",
+      "exclusive": false,
+      "no_local": false,
+      "no_ack": false,
+      "prefetch_count": 10,
+      "arguments": {}
+    }
+  ],
+  "publishers": [
+    {
+      "exchange": "my_exchange",
+      "routing_key": "my_routing_key",
+      "mandatory": true,
+      "immediate": false,
+      "persistence": true,
+      "content_type": "application/json",
+      "content_encoding": "utf-8",
+      "priority": 0,
+      "correlation_id": "",
+      "reply_to": "",
+      "expiration": "",
+      "message_id": "",
+      "timestamp": false,
+      "user_id": "",
+      "app_id": "rust-rabbitmq-app",
+      "delivery_mode": 2
+    }
+  ],
+  "retry": {
+    "max_retries": 5,
+    "initial_interval_ms": 100,
+    "multiplier": 2.0,
+    "max_interval_ms": 30000,
+    "randomization_factor": 0.5
+  },
+  "logging": {
+    "level": "info",
+    "include_connection_events": true,
+    "include_channel_events": true,
+    "include_consumer_events": true,
+    "include_publisher_events": true
+  }
+}
